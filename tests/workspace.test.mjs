@@ -13,7 +13,7 @@ function app(view='admin',id='',session={}){
   w.fetch=async(url,options={})=>{calls.push({url,options});let data={ok:true};
     if(url==='/api/me')data={id:'member-1',org:session.org||org.id,role:'owner',name:'Nour',platform:session.platform??view==='platform'};
     if(url.endsWith('/metrics'))data={members:3,polls:[]};
-    if(url.endsWith('/polls'))data={polls:[]};
+    if(url.endsWith('/polls'))data={polls:session.polls||[]};
     if(url.endsWith('/members'))data={members:[]};
     if(url.endsWith('/display'))data={organization:org,poll:null};
     if(url.endsWith('/screens'))data={screens:[screen],screen_limit:2,active:1};
@@ -47,6 +47,7 @@ test('HR portal shows company theme, screen controls, and a save toast',async()=
   assert.ok(w.document.querySelector('#context-form'));
   assert.ok(w.document.querySelector('#ai-form'));
   assert.ok(w.document.querySelector('.schedule-fields [name=opens_at]'));
+  assert.match(w.document.querySelector('.ws-title a[href*="view=profile"]').href,/id=member-1/);
   const access=w.document.querySelector('#access-import');
   access.querySelector('textarea').value='salma@company.com\nomar@company.com';
   access.dispatchEvent(new w.SubmitEvent('submit',{bubbles:true,cancelable:true,submitter:access.querySelector('button')}));
@@ -83,6 +84,30 @@ test('HR portal shows company theme, screen controls, and a save toast',async()=
   assert.equal(w.document.querySelector('.ws-admin'),dashboard);
   assert.equal(w.document.querySelector('#create-poll'),studio);
   w.close();
+});
+
+test('HR chooses automatic close times for instant and live questions',async()=>{
+  const draft={id:'poll-1',question:'Lunch today?',options:[{id:'one',label:'Koshary'},{id:'two',label:'Hawawshi'}],status:'draft',opens_at:null,closes_at:null};
+  const {w,calls}=app('admin','',{polls:[draft]});await tick();await tick();
+  const start=w.document.querySelector('[data-go-live="poll-1"]');
+  assert.ok(start);
+  assert.equal(start.querySelector('[name=closes_at]').required,true);
+  start.querySelector('[name=closes_at]').value='2030-11-05T17:00';
+  start.dispatchEvent(new w.SubmitEvent('submit',{bubbles:true,cancelable:true,submitter:start.querySelector('button')}));
+  await tick();await tick();
+  const publish=calls.find(x=>x.url==='/api/org/demo/polls/poll-1'&&x.options.method==='PATCH');
+  assert.equal(JSON.parse(publish.options.body).status,'live');
+  assert.equal(JSON.parse(publish.options.body).closes_at,new Date('2030-11-05T17:00').toISOString());
+  w.close();
+  const live={...draft,status:'live',opens_at:'2030-11-05T09:00:00Z',closes_at:'2030-11-05T17:00:00Z'};
+  const current=app('admin','',{polls:[live]});await tick();await tick();
+  const edit=current.w.document.querySelector('[data-live-timing="poll-1"]');
+  assert.ok(edit);
+  edit.querySelector('[name=closes_at]').value='2030-11-05T18:00';
+  edit.dispatchEvent(new current.w.SubmitEvent('submit',{bubbles:true,cancelable:true,submitter:edit.querySelector('button')}));
+  await tick();await tick();
+  assert.ok(current.calls.some(x=>x.url==='/api/org/demo/polls/poll-1/timing'&&x.options.method==='PATCH'));
+  current.w.close();
 });
 
 test('employee joins from the HR email list without a verification message',async()=>{

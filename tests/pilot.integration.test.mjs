@@ -112,6 +112,10 @@ test('company plans, HR access, employee seats, screens, and photo cleanup', { s
     assert.equal(edited.statusCode,200);
     assert.equal(edited.body.profile.profile_photo_data,profilePhoto);
     assert.equal((await call('PATCH',`/org/${childSlug}/profiles/me`,{name:'Salma',department:'Design',job_title:'Designer',photo_data:'data:text/html;base64,PHNjcmlwdD4='},employeeCookie)).statusCode,400);
+    assert.equal((await call('PATCH',`/org/${childSlug}/profiles/${employeeId}`,{name:'HR changed Salma',department:'Design',job_title:'Designer',photo_data:profilePhoto},hrCookie)).statusCode,404);
+    const hrProfile=await call('PATCH',`/org/${childSlug}/profiles/me`,{name:'HR Manager',department:'People',job_title:'HR Lead',photo_data:profilePhoto},hrCookie);
+    assert.equal(hrProfile.body.profile.id,hrId);
+    assert.equal((await db.query('select profile_photo_data from members where id=$1',[employeeId])).rows[0].profile_photo_data,profilePhoto);
     const omarId=(await db.query('select id from members where organization_id=$1 and email=$2',[childOrgId,'omar@example.com'])).rows[0].id;
     await db.query('insert into votes(organization_id,poll_id,option_id,member_id,show_identity) values($1,$2,$3,$4,true)',[childOrgId,childPollId,childOptionId,omarId]);
     const privatePoll=(await db.query("insert into polls(organization_id,question,status,mode) values($1,'Private lunch choice?','closed','anonymous') returning id",[childOrgId])).rows[0].id;
@@ -145,6 +149,10 @@ test('company plans, HR access, employee seats, screens, and photo cleanup', { s
     await db.query("update polls set opens_at=now()-interval '1 minute',closes_at=now()+interval '1 hour' where id=$1",[scheduled.body.id]);
     assert.equal((await call('GET',`/org/${childSlug}/display`)).body.poll.id,scheduled.body.id);
     assert.equal((await db.query('select status from polls where id=$1',[childPollId])).rows[0].status,'closed');
+    await db.query("update polls set opens_at=now()-interval '2 hours',closes_at=now()-interval '1 minute' where id=$1",[scheduled.body.id]);
+    await db.query('select public.huddl_sync_due_polls()');
+    assert.equal((await call('GET',`/org/${childSlug}/display`)).body.poll,null);
+    assert.equal((await db.query('select status from polls where id=$1',[scheduled.body.id])).rows[0].status,'closed');
 
     const pollId=(await db.query("insert into polls(organization_id,question,status,mode) values($1,'Tea or coffee today?','live','social') returning id",[orgId])).rows[0].id;
     const optionId=(await db.query("insert into poll_options(poll_id,label,position) values($1,'Tea',0) returning id",[pollId])).rows[0].id;
@@ -156,6 +164,24 @@ test('company plans, HR access, employee seats, screens, and photo cleanup', { s
     assert.ok(live.body.poll.people[0].photo_data);
     assert.equal((await call('PATCH',`/org/${slug}/polls/${pollId}`,{status:'closed'},cookie)).statusCode,200);
     assert.equal((await db.query('select photo_data from votes where poll_id=$1',[pollId])).rows[0].photo_data,null);
+    const instant=(await call('POST',`/org/${slug}/polls`,{question:'Pick our next lunch?',options:['Koshary','Hawawshi']},cookie)).body.id;
+    assert.equal((await call('PATCH',`/org/${slug}/polls/${instant}`,{status:'live'},cookie)).statusCode,400);
+    const instantClose=new Date(Date.now()+3600000).toISOString();
+    const started=await call('PATCH',`/org/${slug}/polls/${instant}`,{status:'live',closes_at:instantClose},cookie);
+    assert.equal(started.statusCode,200);
+    assert.equal(started.body.closes_at,instantClose);
+    assert.equal((await call('GET',`/org/${slug}/display`)).body.poll.id,instant);
+    const laterClose=new Date(Date.now()+5400000).toISOString();
+    assert.equal((await call('PATCH',`/org/${slug}/polls/${instant}/timing`,{closes_at:laterClose},cookie)).body.closes_at,laterClose);
+    const overlapStart=new Date(Date.now()+1800000).toISOString(),overlapEnd=new Date(Date.now()+7200000).toISOString();
+    assert.equal((await call('POST',`/org/${slug}/polls`,{question:'Another lunch choice?',options:['Tea','Coffee'],opens_at:overlapStart,closes_at:overlapEnd},cookie)).statusCode,409);
+    const instantOption=(await db.query('select id from poll_options where poll_id=$1 order by position limit 1',[instant])).rows[0].id;
+    await db.query("insert into votes(organization_id,poll_id,option_id,member_id,show_identity,photo_data) values($1,$2,$3,$4,true,'data:image/jpeg;base64,/9j/2Q==')",[orgId,instant,instantOption,memberId]);
+    await db.query("update polls set opens_at=now()-interval '2 hours',closes_at=now()-interval '1 minute' where id=$1",[instant]);
+    await db.query('select public.huddl_sync_due_polls()');
+    assert.equal((await call('GET',`/org/${slug}/display`)).body.poll,null);
+    assert.equal((await db.query('select status from polls where id=$1',[instant])).rows[0].status,'closed');
+    assert.equal((await db.query('select photo_data from votes where poll_id=$1',[instant])).rows[0].photo_data,null);
 
     const updated=await call('PATCH',`/org/${slug}/screens/${screen.id}`,{name:'Kitchen',location:'Floor 2',is_active:false},cookie);
     assert.equal(updated.body.screen.is_active,false);

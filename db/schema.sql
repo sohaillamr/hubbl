@@ -164,6 +164,40 @@ drop trigger if exists purge_huddl_photos_on_pause_trigger on organizations;
 create trigger purge_huddl_photos_on_pause_trigger after update of is_active on organizations
   for each row execute function purge_huddl_photos_on_pause();
 
+-- Keep timed questions accurate even when no office screen is open. The
+-- application also checks on every display, vote, and HR calendar request.
+create schema if not exists extensions;
+create extension if not exists pg_cron with schema extensions;
+create or replace function public.huddl_sync_due_polls() returns void
+language plpgsql security definer set search_path = public as $$
+declare org_id uuid; due_id uuid;
+begin
+  for org_id in
+    select distinct organization_id from polls
+    where (status = 'live' and closes_at <= now())
+       or (status = 'draft' and opens_at <= now())
+  loop
+    perform id from organizations where id = org_id for update;
+    update polls set status = 'closed', updated_at = now()
+      where organization_id = org_id and status = 'live' and closes_at <= now();
+    select id into due_id from polls
+      where organization_id = org_id and status = 'draft'
+        and opens_at <= now() and closes_at > now()
+      order by opens_at desc, id desc limit 1;
+    update polls set status = 'closed', updated_at = now()
+      where organization_id = org_id and status = 'draft' and opens_at <= now()
+        and (closes_at <= now() or id <> due_id);
+    if due_id is not null then
+      update polls set status = 'closed', updated_at = now()
+        where organization_id = org_id and status = 'live';
+      update polls set status = 'live', updated_at = now() where id = due_id;
+    end if;
+  end loop;
+end $$;
+revoke all on function public.huddl_sync_due_polls() from public, anon, authenticated;
+select cron.schedule('huddl-scheduled-polls', '* * * * *',
+  'select public.huddl_sync_due_polls()');
+
 create table if not exists audit_events (
   id bigserial primary key,
   organization_id uuid not null references organizations(id) on delete cascade,
