@@ -15,7 +15,8 @@ create table if not exists organizations (
 alter table organizations add column if not exists is_active boolean not null default true;
 alter table organizations add column if not exists seat_limit integer not null default 100;
 alter table organizations add column if not exists screen_limit integer not null default 3;
-alter table organizations add column if not exists enforce_allowlist boolean not null default false;
+alter table organizations add column if not exists enforce_allowlist boolean not null default true;
+alter table organizations alter column enforce_allowlist set default true;
 
 create table if not exists members (
   id uuid primary key default gen_random_uuid(),
@@ -47,6 +48,7 @@ create index if not exists employee_access_org_active on employee_access (organi
 insert into employee_access(organization_id,email)
 select organization_id,lower(email) from members where role='employee'
 on conflict (organization_id,email) do nothing;
+update organizations set enforce_allowlist=true where enforce_allowlist=false;
 
 create table if not exists login_codes (
   id uuid primary key default gen_random_uuid(),

@@ -6,7 +6,7 @@ Huddl runs a daily workplace question for each company. Employees vote from thei
 
 The multi-company app is at `/workspace?org=COMPANY-SLUG&view=vote`. Replace `vote` with `display` for an office screen or `admin` for HR. The Huddl owner uses `/workspace?view=platform` to create companies with a seat and live-screen allowance, adjust those limits, pause spaces, and see participation and screen links. New companies start with the selected number of named screen links.
 
-HR can upload a CSV or paste employee emails, up to the assigned seat allowance, and remove or restore individual access. New companies accept only emails on that list. An employee verifies ownership with an emailed code on first use, saves their name, department, and optional job title, then uses a renewable 90-day session. Removing an email revokes its existing session. Returning employees do not re-enter their profile, even if they later need a new email code.
+HR can upload a CSV or paste employee emails, up to the assigned seat allowance, and remove or restore individual access. Companies accept only emails on that list; existing employee accounts are carried into it during migration. An employee verifies ownership with an emailed code on first use, saves their name and a department or job title, then uses a renewable 90-day session. Removing an email revokes its existing session. Returning employees do not re-enter their profile, even if they later need a new email code.
 
 HR can also create questions with 2–8 choices, publish or close them, manage screen names and locations within the screen limit, see members and participation, and upload a logo. A logo upload suggests colors; the saved color themes the entire company portal. Buttons show progress and action toasts.
 
