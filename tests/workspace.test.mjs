@@ -110,7 +110,7 @@ test('HR chooses automatic close times for instant and live questions',async()=>
   current.w.close();
 });
 
-test('employee joins from the HR email list without a verification message',async()=>{
+test('employee verifies their email before creating a profile',async()=>{
   const dom=new JSDOM('<div id="app"></div>',{url:'https://huddl.test/workspace?org=demo&view=vote',runScripts:'outside-only'});
   const w=dom.window,calls=[];
   let joined=false;
@@ -118,6 +118,7 @@ test('employee joins from the HR email list without a verification message',asyn
     calls.push({url,options});
     if(url==='/api/org/demo/display')return {ok:true,json:async()=>({organization:{id:'org-1',slug:'demo',name:'Cairo Team',accent_color:'#244f9b'},poll:null})};
     if(url==='/api/me')return joined?{ok:true,json:async()=>({id:'member-1',org:'org-1',role:'employee',name:'Salma'})}:{ok:false,json:async()=>({error:'Sign in required'})};
+    if(url==='/api/auth/request')return {ok:true,json:async()=>({sent:true})};
     if(url==='/api/auth/join'){
       const data=JSON.parse(options.body);
       if(data.name)joined=true;
@@ -130,8 +131,12 @@ test('employee joins from the HR email list without a verification message',asyn
   emailForm.querySelector('[name=email]').value='salma@company.com';
   emailForm.dispatchEvent(new w.SubmitEvent('submit',{bubbles:true,cancelable:true,submitter:emailForm.querySelector('button')}));
   await tick();await tick();
+  const codeForm=w.document.querySelector('#code-form');
+  assert.equal(codeForm.hidden,false);
+  codeForm.querySelector('[name=code]').value='123456';
+  codeForm.dispatchEvent(new w.SubmitEvent('submit',{bubbles:true,cancelable:true,submitter:codeForm.querySelector('button')}));
+  await tick();await tick();
   assert.equal(w.document.querySelector('#profile-form').hidden,false);
-  assert.equal(w.document.querySelector('#code-form'),null);
   const profile=w.document.querySelector('#profile-form');
   profile.querySelector('[name=name]').value='Salma';profile.querySelector('[name=department]').value='Design';
   profile.dispatchEvent(new w.SubmitEvent('submit',{bubbles:true,cancelable:true,submitter:profile.querySelector('button')}));
@@ -139,7 +144,7 @@ test('employee joins from the HR email list without a verification message',asyn
   assert.equal(joined,true);
   assert.match(w.document.querySelector('.ws-auth h1').textContent,/No question yet/);
   assert.equal(calls.filter(x=>x.url==='/api/auth/join').length,2);
-  assert.ok(!calls.some(x=>/auth\/(request|verify)/.test(x.url)));
+  assert.equal(calls.filter(x=>x.url==='/api/auth/request').length,1);
   w.close();
 });
 

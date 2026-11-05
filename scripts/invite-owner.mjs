@@ -7,7 +7,7 @@ if (process.loadEnvFile) {
 }
 const { DATABASE_URL, RESEND_API_KEY, EMAIL_FROM, EMAIL_TEST_RECIPIENT, PUBLIC_SITE_URL, OWNER_EMAIL } = process.env;
 if (!DATABASE_URL || !RESEND_API_KEY || !EMAIL_FROM || !OWNER_EMAIL) throw new Error('Database, Resend, sender, and owner email are required.');
-const db = new Client({connectionString:DATABASE_URL,ssl:{rejectUnauthorized:!!process.env.SUPABASE_CA_CERT,...(process.env.SUPABASE_CA_CERT?{ca:process.env.SUPABASE_CA_CERT}:{})}});
+const db = new Client({connectionString:DATABASE_URL,ssl:{rejectUnauthorized:true,...(process.env.SUPABASE_CA_CERT?{ca:process.env.SUPABASE_CA_CERT}:{})}});
 await db.connect();
 try {
   const owner=(await db.query("select m.id,m.email,o.id as org_id,o.name,o.slug from members m join organizations o on o.id=m.organization_id where lower(m.email)=lower($1) and m.role='owner' and o.is_active=true order by o.created_at limit 1",[OWNER_EMAIL])).rows[0];

@@ -5,9 +5,10 @@ import { suggestQuestions } from './ai.js';
 import { buildVoteReport } from './report.js';
 import { sendMail, emailTestMode } from './mail.js';
 
-// Supabase's shared pooler uses its own CA. TLS is always required; supply
-// SUPABASE_CA_CERT from Database Settings to also verify the server identity.
-const pool = process.env.DATABASE_URL ? new Pool({connectionString:process.env.DATABASE_URL,ssl:{rejectUnauthorized:!!process.env.SUPABASE_CA_CERT,...(process.env.SUPABASE_CA_CERT?{ca:process.env.SUPABASE_CA_CERT}:{})},max:1}) : null;
+// Verify the database server certificate and hostname on every connection.
+const databaseUrl=process.env.DATABASE_URL?new URL(process.env.DATABASE_URL):null;
+for(const key of ['sslmode','sslrootcert','sslcert','sslkey'])databaseUrl?.searchParams.delete(key);
+const pool = databaseUrl ? new Pool({connectionString:databaseUrl.toString(),ssl:{rejectUnauthorized:true,...(process.env.SUPABASE_CA_CERT?{ca:process.env.SUPABASE_CA_CERT}:{})},max:1}) : null;
 const json=(res,status,data)=>res.status(status).json(data);
 const fail=(status,message)=>Object.assign(new Error(message),{status});
 const secret=()=>{if(!process.env.SESSION_SECRET || process.env.SESSION_SECRET.length<32)throw fail(503,'SESSION_SECRET is not configured');return new TextEncoder().encode(process.env.SESSION_SECRET)};
@@ -27,10 +28,8 @@ const requireAdmin=user=>{if(!['owner','admin'].includes(user.role))throw fail(4
 const requireOrg=(user,org)=>{if(user.org!==org.id && (!['owner','admin'].includes(user.role)||!process.env.PLATFORM_ADMIN_EMAIL||user.email?.toLowerCase()!==process.env.PLATFORM_ADMIN_EMAIL.toLowerCase()))throw fail(403,'Wrong organization')};
 async function organization(slug){const {rows}=await query('select * from organizations where slug=$1',[slug]);if(!rows[0])throw fail(404,'Company not found');return rows[0]}
 const accessCodeHash=code=>createHash('sha256').update(code).digest('hex');
-const issueAccessCode=()=>{const code=randomBytes(12).toString('base64url');return {code,hash:accessCodeHash(code)}};
 async function rateLimit(kind,key,max,minutes=15){const hashed=accessCodeHash(`${kind}:${key}`);const result=(await query(`insert into auth_rate_limits(key,attempts,window_started_at) values($1,1,now()) on conflict(key) do update set attempts=case when auth_rate_limits.window_started_at<now()-($2::int*interval '1 minute') then 1 else auth_rate_limits.attempts+1 end,window_started_at=case when auth_rate_limits.window_started_at<now()-($2::int*interval '1 minute') then now() else auth_rate_limits.window_started_at end returning attempts`,[hashed,minutes])).rows[0];if(result.attempts>max)throw fail(429,'Too many attempts. Try again later')}
 async function authRate(req,kind,key){await rateLimit(`${kind}:account`,key,10);const ip=String(req.headers['x-forwarded-for']||req.headers['x-real-ip']||'').split(',')[0].trim();if(ip)await rateLimit(`${kind}:ip`,ip,80)}
-async function requireEmployeeCode(org,email,code){if(!org.is_active)throw fail(403,'This company space is paused');if(!validEmail(email)||!code||typeof code!=='string'||code.length>64)throw fail(401,'Email or access code is invalid. Ask HR for your code');if(org.allowed_email_domain&&!email.endsWith('@'+org.allowed_email_domain))throw fail(401,'Email or access code is invalid. Ask HR for your code');const access=(await query('select access_code_hash from employee_access where organization_id=$1 and email=$2 and is_active=true',[org.id,email])).rows[0];const actual=Buffer.from(accessCodeHash(code),'hex'),expected=Buffer.from(access?.access_code_hash||'', 'hex');if(actual.length!==expected.length||!timingSafeEqual(actual,expected))throw fail(401,'Email or access code is invalid. Ask HR for your code');const member=(await query('select role from members where organization_id=$1 and email=$2',[org.id,email])).rows[0];if(member&&member.role!=='employee')throw fail(403,'Use the HR sign-in for this account')}
 const requirePlatform=user=>{if(!['owner','admin'].includes(user.role)||!process.env.PLATFORM_ADMIN_EMAIL||user.email?.toLowerCase()!==process.env.PLATFORM_ADMIN_EMAIL.toLowerCase())throw fail(403,'Platform owner access required');if(user.must_change_password)throw fail(403,'Change your temporary password first')};
 async function audit(org,user,action,target=null,metadata={}){await query('insert into audit_events(organization_id,actor_id,action,target_id,metadata) values($1,$2,$3,$4,$5)',[org,user,action,target,JSON.stringify(metadata)])}
 async function sendCode(email,code,company,purpose='sign-in'){await sendMail({to:email,subject:`Your ${company} Huddl ${purpose} code`,text:`${purpose==='email-change'?'HR email change':'Sign-in'} requested for ${email}. Your Huddl code is ${code}. It expires in 10 minutes.`})}
@@ -74,19 +73,39 @@ export default async function handler(req,res){
     if(path[0]==='auth'&&path[1]==='admin'&&method==='POST'){
       const b=body(req),org=await organization(clean(b.slug,40)),email=clean(b.email,255).toLowerCase();await authRate(req,'admin',`${org.id}:${email}`);const {rows}=await query('select * from members where organization_id=$1 and lower(email)=lower($2) and role in (\'owner\',\'admin\')',[org.id,email]);if(!rows[0]||!compare(b.password||'',rows[0].password_hash))throw fail(401,'Invalid credentials');if(rows[0].must_change_password&&rows[0].credential_expires_at&&new Date(rows[0].credential_expires_at)<new Date())throw fail(410,'Temporary password expired. Request a new HR link.');await session(res,rows[0]);return json(res,200,{name:rows[0].display_name,role:rows[0].role,organization:org.slug,must_change_password:rows[0].must_change_password})
     }
+    if(path[0]==='auth'&&path[1]==='request'&&method==='POST'){
+      const b=body(req),org=await organization(clean(b.slug,40)),email=clean(b.email,255).toLowerCase();
+      await authRate(req,'request',org.id+':'+email);
+      if(!validEmail(email))throw fail(400,'Enter a valid email address');
+      const eligible=org.is_active&&(!org.allowed_email_domain||email.endsWith('@'+org.allowed_email_domain))&&(await query("select 1 from employee_access a where a.organization_id=$1 and a.email=$2 and a.is_active=true and not exists(select 1 from members m where m.organization_id=$1 and m.email=$2 and m.role in ('owner','admin'))",[org.id,email])).rows.length;
+      if(eligible){
+        const code=String(randomInt(100000,1000000));
+        const entry=(await query("insert into login_codes(organization_id,email,code_hash,expires_at) values($1,$2,$3,now()+interval '10 minutes') returning id",[org.id,email,hash(code)])).rows[0];
+        try{await sendCode(email,code,org.name)}catch(e){await query('delete from login_codes where id=$1',[entry.id]);throw e}
+      }
+      return json(res,200,{sent:true});
+    }
     if(path[0]==='auth'&&path[1]==='join'&&method==='POST'){
       const b=body(req),org=await organization(clean(b.slug,40)),email=clean(b.email,255).toLowerCase();
       await authRate(req,'join',`${org.id}:${email}`);
-      await requireEmployeeCode(org,email,b.access_code);
-      let user=(await query("select * from members where organization_id=$1 and email=$2 and role='employee'",[org.id,email])).rows[0];
-      if(!user){
-        const name=clean(b.name,80),department=clean(b.department,80),jobTitle=clean(b.job_title,80);
-        if(!name&&!department&&!jobTitle)return json(res,200,{profile_required:true});
-        if(!name||!department)throw fail(400,'Name and department are required the first time');
-        user=(await query("insert into members(organization_id,email,display_name,department,job_title) values($1,$2,$3,$4,$5) on conflict(organization_id,email) do nothing returning *",[org.id,email,name,department,jobTitle])).rows[0];
-        if(!user)user=(await query("select * from members where organization_id=$1 and email=$2 and role='employee'",[org.id,email])).rows[0];
-        if(!user)throw fail(409,'This email is already used by another account');
-      }
+      if(typeof b.code!=='string'||!/^\d{6}$/.test(b.code))throw fail(401,'Invalid or expired code');
+      const client=await pool.connect();let user;
+      try{
+        await client.query('begin');
+        const entry=(await client.query("select * from login_codes where organization_id=$1 and email=$2 and expires_at>now() order by created_at desc,id desc limit 1 for update",[org.id,email])).rows[0];
+        const eligible=org.is_active&&(await client.query("select 1 from employee_access where organization_id=$1 and email=$2 and is_active=true",[org.id,email])).rows.length;
+        if(!entry||entry.attempts>=5||!eligible)throw fail(401,'Invalid or expired code');
+        if(!compare(String(b.code||''),entry.code_hash)){await client.query('update login_codes set attempts=attempts+1 where id=$1',[entry.id]);await client.query('commit');throw fail(401,'Invalid or expired code')}
+        user=(await client.query("select * from members where organization_id=$1 and email=$2 and role='employee'",[org.id,email])).rows[0];
+        if(!user){
+          const name=clean(b.name,80),department=clean(b.department,80),jobTitle=clean(b.job_title,80);
+          if(!name&&!department&&!jobTitle){await client.query('commit');return json(res,200,{profile_required:true})}
+          if(!name||!department)throw fail(400,'Name and department are required the first time');
+          user=(await client.query("insert into members(organization_id,email,display_name,department,job_title) values($1,$2,$3,$4,$5) on conflict(organization_id,email) do nothing returning *",[org.id,email,name,department,jobTitle])).rows[0];
+          if(!user)throw fail(409,'Account unavailable');
+        }
+        await client.query('delete from login_codes where organization_id=$1 and email=$2',[org.id,email]);await client.query('commit');
+      }catch(e){try{await client.query('rollback')}catch{}throw e}finally{client.release()}
       await session(res,user);return json(res,200,{profile_required:false,name:user.display_name,role:user.role,organization:org.slug})
     }
     if(path[0]==='auth'&&path[1]==='logout'&&method==='POST'){res.setHeader('Set-Cookie','huddl_session=; HttpOnly; Path=/; SameSite=Lax; Max-Age=0');return json(res,200,{ok:true})}
@@ -149,58 +168,11 @@ export default async function handler(req,res){
       requireAdmin(user);
       if(route==='access'&&method==='GET'){const {rows}=await query(`select a.id,a.email,a.is_active,a.created_at,a.access_code_hash is not null as has_code,m.display_name,m.department,m.job_title,m.created_at as joined_at from employee_access a left join members m on m.organization_id=a.organization_id and m.email=a.email and m.role='employee' where a.organization_id=$1 order by a.is_active desc,a.created_at desc limit 5000`,[org.id]);const assigned=(await query('select count(*)::int as n from employee_access where organization_id=$1 and is_active=true',[org.id])).rows[0].n;return json(res,200,{seat_limit:org.seat_limit,assigned,enforce_allowlist:org.enforce_allowlist,access:rows})}
       if(route==='access'&&method==='POST'){
-        const emails=body(req).emails;
-        if(!Array.isArray(emails)||emails.length<1||emails.length>5000)throw fail(400,'Provide 1–5000 email addresses');
-        const unique=[...new Set(emails.map(x=>clean(x,255).toLowerCase()))];
-        if(unique.some(x=>!validEmail(x)||(org.allowed_email_domain&&!x.endsWith('@'+org.allowed_email_domain))))throw fail(400,'The list contains an invalid or out-of-domain email');
-        const client=await pool.connect();
-        try{
-          await client.query('begin');
-          const plan=(await client.query('select seat_limit from organizations where id=$1 for update',[org.id])).rows[0];
-          const existing=(await client.query('select email,is_active,access_code_hash from employee_access where organization_id=$1',[org.id])).rows;
-          const byEmail=new Map(existing.map(row=>[row.email,row]));
-          const active=existing.filter(row=>row.is_active).length;
-          const added=unique.filter(email=>!byEmail.get(email)?.is_active).length;
-          if(active+added>plan.seat_limit)throw fail(409,`Only ${plan.seat_limit-active} seats are available`);
-          const codes=unique.filter(email=>!byEmail.get(email)?.is_active||!byEmail.get(email)?.access_code_hash).map(email=>({email,...issueAccessCode()}));
-          const hashes=new Map(codes.map(({email,hash})=>[email,hash]));
-          await client.query(`insert into employee_access(organization_id,email,created_by,access_code_hash)
-            select $1,e.email,$3,e.code_hash from unnest($2::text[],$4::text[]) as e(email,code_hash)
-            on conflict(organization_id,email) do update set is_active=true,access_code_hash=coalesce(excluded.access_code_hash,employee_access.access_code_hash)`,[org.id,unique,user.sub,unique.map(email=>hashes.get(email)||null)]);
-          if(codes.length)await client.query("update members set session_version=session_version+1 where organization_id=$1 and role='employee' and email=any($2::text[])",[org.id,codes.map(x=>x.email)]);
-          await client.query('update organizations set enforce_allowlist=true where id=$1',[org.id]);
-          await client.query('insert into audit_events(organization_id,actor_id,action,metadata) values($1,$2,$3,$4)',[org.id,user.sub,'access.imported',JSON.stringify({added,total:unique.length,codes_issued:codes.length})]);
-          await client.query('commit');
-          return json(res,200,{added,assigned:active+added,seat_limit:plan.seat_limit,codes:codes.map(({email,code})=>({email,code}))});
-        }catch(e){await client.query('rollback');throw e}finally{client.release()}
-      }
-      if(route==='access'&&path[3]==='codes'&&method==='POST'){
-        const client=await pool.connect();
-        try{
-          await client.query('begin');
-          const rows=(await client.query('select email from employee_access where organization_id=$1 and is_active=true and access_code_hash is null for update',[org.id])).rows;
-          const codes=rows.map(({email})=>({email,...issueAccessCode()}));
-          if(codes.length){
-            await client.query('update employee_access a set access_code_hash=c.hash from unnest($2::text[],$3::text[]) c(email,hash) where a.organization_id=$1 and a.email=c.email',[org.id,codes.map(x=>x.email),codes.map(x=>x.hash)]);
-            await client.query("update members set session_version=session_version+1 where organization_id=$1 and role='employee' and email=any($2::text[])",[org.id,codes.map(x=>x.email)]);
-          }
-          await client.query('insert into audit_events(organization_id,actor_id,action,metadata) values($1,$2,$3,$4)',[org.id,user.sub,'access.codes.issued',JSON.stringify({count:codes.length})]);
-          await client.query('commit');
-          return json(res,200,{codes:codes.map(({email,code})=>({email,code}))});
-        }catch(e){await client.query('rollback');throw e}finally{client.release()}
-      }
-      if(route==='access'&&path[3]&&path[4]==='code'&&method==='POST'){
-        const issued=issueAccessCode();
-        const client=await pool.connect();
-        try{
-          await client.query('begin');
-          const access=(await client.query('update employee_access set access_code_hash=$3 where organization_id=$1 and id=$2 and is_active=true returning id,email',[org.id,path[3],issued.hash])).rows[0];
-          if(!access)throw fail(404,'Active employee email not found');
-          await client.query("update members set session_version=session_version+1 where organization_id=$1 and email=$2 and role='employee'",[org.id,access.email]);
-          await client.query('insert into audit_events(organization_id,actor_id,action,metadata) values($1,$2,$3,$4)',[org.id,user.sub,'access.code.rotated',JSON.stringify({email:access.email})]);
-          await client.query('commit');
-          return json(res,200,{email:access.email,code:issued.code});
-        }catch(e){await client.query('rollback');throw e}finally{client.release()}
+        const emails=body(req).emails;if(!Array.isArray(emails)||emails.length<1||emails.length>5000)throw fail(400,'Provide 1–5000 email addresses');
+        const unique=[...new Set(emails.map(x=>clean(x,255).toLowerCase()))];if(unique.some(x=>!validEmail(x)||(org.allowed_email_domain&&!x.endsWith('@'+org.allowed_email_domain))))throw fail(400,'The list contains an invalid or out-of-domain email');
+        const client=await pool.connect();try{await client.query('begin');const plan=(await client.query('select seat_limit from organizations where id=$1 for update',[org.id])).rows[0];const active=(await client.query('select email from employee_access where organization_id=$1 and is_active=true',[org.id])).rows.map(x=>x.email),activeSet=new Set(active),added=unique.filter(x=>!activeSet.has(x)).length;if(active.length+added>plan.seat_limit)throw fail(409,'Not enough seats available');
+        await client.query('insert into employee_access(organization_id,email,created_by) select $1,unnest($2::text[]),$3 on conflict(organization_id,email) do update set is_active=true',[org.id,unique,user.sub]);
+        await client.query('insert into audit_events(organization_id,actor_id,action,metadata) values($1,$2,$3,$4)',[org.id,user.sub,'access.imported',JSON.stringify({added,total:unique.length})]);await client.query('commit');return json(res,200,{added,assigned:active.length+added,seat_limit:plan.seat_limit})}catch(e){await client.query('rollback');throw e}finally{client.release()}
       }
       if(route==='access'&&path[3]&&method==='PATCH'){const b=body(req);if(typeof b.is_active!=='boolean')throw fail(400,'Active status required');const client=await pool.connect();try{await client.query('begin');const plan=(await client.query('select seat_limit from organizations where id=$1 for update',[org.id])).rows[0];const old=(await client.query('select id,email,is_active from employee_access where organization_id=$1 and id=$2 for update',[org.id,path[3]])).rows[0];if(!old)throw fail(404,'Email not found');if(b.is_active&&!old.is_active){const active=(await client.query('select count(*)::int as n from employee_access where organization_id=$1 and is_active=true',[org.id])).rows[0].n;if(active>=plan.seat_limit)throw fail(409,'No seats are available')}const access=(await client.query('update employee_access set is_active=$3,access_code_hash=case when $3 then access_code_hash else null end where organization_id=$1 and id=$2 returning id,email,is_active',[org.id,path[3],b.is_active])).rows[0];if(!b.is_active)await client.query("update members set session_version=session_version+1 where organization_id=$1 and email=$2 and role='employee'",[org.id,old.email]);if(!b.is_active)await client.query('update votes set show_identity=false,photo_data=null where organization_id=$1 and member_id in (select id from members where organization_id=$1 and email=$2)',[org.id,old.email]);await client.query('insert into audit_events(organization_id,actor_id,action,metadata) values($1,$2,$3,$4)',[org.id,user.sub,'access.updated',JSON.stringify({email:old.email,is_active:b.is_active})]);await client.query('commit');return json(res,200,{access})}catch(e){await client.query('rollback');throw e}finally{client.release()}}
       if(route==='screens'&&method==='GET'){const {rows}=await query('select id,name,location,token,is_active,created_at from display_screens where organization_id=$1 order by created_at',[org.id]);return json(res,200,{screens:rows,screen_limit:org.screen_limit,active:rows.filter(x=>x.is_active).length})}
