@@ -30,6 +30,7 @@ The production pilot is at `/workspace?org=YOUR-SLUG&view=vote`. Use `view=displ
 
 1. Set the variables shown in `.env.example` in a local `.env.local` and in Vercel. Never commit actual values. Use a fresh, long `SESSION_SECRET` and `SETUP_SECRET`.
 2. For Vercel's serverless API, set `DATABASE_URL` to the **Supabase shared transaction pooler** connection string from the project dashboard. The direct `db.*.supabase.co:5432` URL is suitable for migrations but is not the recommended serverless connection. Run `npm run db:migrate` with that direct URL in a local environment that can reach it.
+   The shared pooler uses a Supabase certificate authority that Node does not trust by default. The API requires TLS and accepts an optional `SUPABASE_CA_CERT` environment value containing the certificate downloaded from Supabase **Database → Settings → SSL Configuration** to verify the server as well.
 3. Configure a verified sending domain with Resend and set `RESEND_API_KEY` plus `EMAIL_FROM`. Employees receive a six-digit code. Admins sign in with the password created during setup.
 4. After the migration, create the first company with `POST /api/setup`, using `X-Setup-Secret` and JSON fields `slug`, `name`, `domain`, `email`, `admin_name`, and `password` (12+ characters). Set `PLATFORM_ADMIN_EMAIL` to that owner email for `/workspace?view=platform`.
 5. Enable Speed Insights for the Vercel project. This Vite app uses `injectSpeedInsights()` from `@vercel/speed-insights`; the `/next` component applies only to Next.js.

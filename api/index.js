@@ -3,7 +3,9 @@ import { SignJWT, jwtVerify } from 'jose';
 import { randomInt, scryptSync, timingSafeEqual, randomBytes } from 'node:crypto';
 import { Resend } from 'resend';
 
-const pool = process.env.DATABASE_URL ? new Pool({connectionString:process.env.DATABASE_URL,ssl:{rejectUnauthorized:true},max:1}) : null;
+// Supabase's shared pooler uses its own CA. TLS is always required; supply
+// SUPABASE_CA_CERT from Database Settings to also verify the server identity.
+const pool = process.env.DATABASE_URL ? new Pool({connectionString:process.env.DATABASE_URL,ssl:{rejectUnauthorized:!!process.env.SUPABASE_CA_CERT,...(process.env.SUPABASE_CA_CERT?{ca:process.env.SUPABASE_CA_CERT}:{})},max:1}) : null;
 const json=(res,status,data)=>res.status(status).json(data);
 const fail=(status,message)=>Object.assign(new Error(message),{status});
 const secret=()=>{if(!process.env.SESSION_SECRET || process.env.SESSION_SECRET.length<32)throw fail(503,'SESSION_SECRET is not configured');return new TextEncoder().encode(process.env.SESSION_SECRET)};
