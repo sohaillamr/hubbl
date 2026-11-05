@@ -67,3 +67,38 @@ test('Huddl owner generates company HR access and sees screen links',async()=>{
   assert.match(w.document.querySelector('.ws-credentials').textContent,/temporary-secret-123/);
   w.close();
 });
+
+test('office screen refreshes votes without rebuilding cards or QR code',async()=>{
+  const dom=new JSDOM('<div id="app"></div>',{url:'https://huddl.test/workspace?org=demo&view=display',runScripts:'outside-only'});
+  const w=dom.window,timers=[];
+  const option={id:'option-1',label:'Koshary',votes:1};
+  const poll={id:'poll-1',question:'Lunch today?',mode:'social',options:[option],people:[],total:1};
+  let disconnected=false,qrCalls=0;
+  w.QRCode={toString:async()=>{qrCalls++;return '<svg id="test-qr"></svg>'}};
+  w.setTimeout=callback=>{timers.push(callback);return timers.length};
+  w.clearTimeout=()=>{};
+  w.fetch=async()=>{if(disconnected)throw Error('Network unavailable');return {ok:true,json:async()=>({organization:{id:'org-1',name:'Cairo Team',accent_color:'#244f9b',logo_data:null},poll})}};
+  w.eval(source);await tick();await tick();
+  const display=w.document.querySelector('.ws-display'),card=w.document.querySelector('.ws-results article'),qr=w.document.querySelector('#ws-qr');
+  assert.ok(display&&card&&qr);
+  option.votes=2;poll.total=2;poll.people=[{vote_id:'vote-1',option_id:'option-1',display_name:'Salma',department:'Design',job_title:'Designer',photo_data:null}];
+  await timers.shift()();
+  assert.equal(w.document.querySelector('.ws-display'),display);
+  assert.equal(w.document.querySelector('.ws-results article'),card);
+  assert.equal(w.document.querySelector('#ws-qr'),qr);
+  assert.equal(w.document.querySelector('.ws-display-foot b').textContent,'2');
+  assert.match(card.querySelector('.ws-people').textContent,/Salma/);
+  assert.equal(qrCalls,1);
+  const firstPerson=card.querySelector('.ws-people span');
+  option.votes=3;poll.total=3;poll.people.unshift({vote_id:'vote-2',option_id:'option-1',display_name:'Omar',department:'Product',job_title:'Designer',photo_data:null});
+  await timers.shift()();
+  assert.equal(card.querySelectorAll('.ws-people span')[1],firstPerson);
+  assert.equal(w.document.querySelector('.ws-display'),display);
+  disconnected=true;await timers.shift()();
+  assert.equal(w.document.querySelector('.ws-display'),display);
+  assert.match(w.document.querySelector('.ws-refresh-error').textContent,/Reconnecting/);
+  disconnected=false;await timers.shift()();
+  assert.equal(w.document.querySelector('.ws-refresh-error'),null);
+  assert.equal(w.document.querySelector('.ws-display'),display);
+  w.close();
+});

@@ -29,9 +29,52 @@ async function start(){
 }
 
 async function showDisplay(){
-  clearInterval(refreshTimer);
-  async function refresh(){try{const screen=params.get('screen');const data=await api(`/org/${slug}/display${screen?`?screen=${encodeURIComponent(screen)}`:''}`);const org=data.organization,poll=data.poll;theme(org.accent_color);const options=poll?.options||[];const total=poll?.total||0;root.innerHTML=shell(`<div class="ws-display"><div class="ws-display-head"><div>${org.logo_data?`<img src="${esc(org.logo_data)}" alt="">`:''}<strong>${esc(org.name)}</strong><span>× huddl</span></div><span class="live-pill"><i></i>${poll?'LIVE TODAY':'NO LIVE QUESTION'}</span></div>${poll?`<span class="eyebrow">TODAY'S HUDDL</span><h1>${esc(poll.question)}</h1><div class="ws-results">${options.map(o=>`<article><div class="ws-result-title"><strong>${esc(o.label)}</strong><b>${total?Math.round(o.votes/total*100):0}%</b></div><div class="ws-meter"><i style="width:${total?o.votes/total*100:0}%"></i></div><div class="ws-people">${poll.people.filter(p=>p.option_id===o.id).map(p=>`<span>${p.photo_data?`<img src="${esc(p.photo_data)}" alt="">`:'☺'} <strong>${esc(p.display_name)}</strong> <small>${esc([p.job_title,p.department].filter(Boolean).join(" / "))}</small></span>`).join('')}</div></article>`).join('')}</div><div class="ws-display-foot"><span><b>${total}</b> votes so far</span><div><span>Scan to vote →</span><div id="ws-qr"></div></div></div>`:'<div class="ws-empty">The next question will appear here when HR publishes it.</div>'}</div><p class="ws-caption">Updates every 5 seconds · Share the voting link with your team</p>`, 'display');if(poll)document.querySelector('#ws-qr').innerHTML=await QRCode.toString(new URL(link('vote'),location.origin).href,{type:'svg',width:110,margin:0})}catch(e){root.innerHTML=shell(error(e.message),'display')}}
-  await refresh();refreshTimer=setInterval(refresh,5000);
+  clearTimeout(refreshTimer);
+  const screen=params.get('screen');
+  let renderedKey='';
+  async function refresh(){
+    try{
+      const {organization:org,poll}=await api(`/org/${slug}/display${screen?`?screen=${encodeURIComponent(screen)}`:''}`);
+      theme(org.accent_color);
+      const options=poll?.options||[];
+      const key=JSON.stringify([org.id,org.name,org.logo_data,poll?.id,poll?.question,poll?.mode,options.map(o=>[o.id,o.label])]);
+      if(key!==renderedKey){
+        root.innerHTML=shell(`<div class="ws-display"><div class="ws-display-head"><div>${org.logo_data?`<img src="${esc(org.logo_data)}" alt="">`:''}<strong>${esc(org.name)}</strong><span>× huddl</span></div><span class="live-pill"><i></i>${poll?'LIVE TODAY':'NO LIVE QUESTION'}</span></div>${poll?`<span class="eyebrow">TODAY'S HUDDL</span><h1>${esc(poll.question)}</h1><div class="ws-results">${options.map(o=>`<article><div class="ws-result-title"><strong>${esc(o.label)}</strong><b>0%</b></div><div class="ws-meter"><i style="width:0%"></i></div><div class="ws-people"></div></article>`).join('')}</div><div class="ws-display-foot"><span><b>0</b> votes so far</span><div><span>Scan to vote →</span><div id="ws-qr"></div></div></div>`:'<div class="ws-empty">The next question will appear here when HR publishes it.</div>'}</div><p class="ws-caption">Updates every 5 seconds · Share the voting link with your team</p>`, 'display');
+        if(poll)root.querySelector('#ws-qr').innerHTML=await QRCode.toString(new URL(link('vote'),location.origin).href,{type:'svg',width:110,margin:0});
+        renderedKey=key;
+      }
+      if(poll){
+        const total=poll.total||0;
+        root.querySelector('.ws-display-foot b').textContent=total;
+        root.querySelectorAll('.ws-results article').forEach((card,index)=>{
+          const option=options[index],percent=total?option.votes/total*100:0;
+          const label=card.querySelector('.ws-result-title b');
+          const nextLabel=`${Math.round(percent)}%`;
+          if(label.textContent!==nextLabel)label.textContent=nextLabel;
+          const meter=card.querySelector('.ws-meter i');
+          const nextWidth=`${percent}%`;
+          if(meter.style.width!==nextWidth)meter.style.width=nextWidth;
+          const people=poll.people.filter(p=>p.option_id===option.id);
+          const list=card.querySelector('.ws-people');
+          const existing=new Map([...list.children].map(node=>[node.dataset.voteId,node]));
+          people.forEach((p,position)=>{
+            const id=String(p.vote_id),markup=`${p.photo_data?`<img src="${esc(p.photo_data)}" alt="">`:'☺'} <strong>${esc(p.display_name)}</strong> <small>${esc([p.job_title,p.department].filter(Boolean).join(' / '))}</small>`;
+            let node=existing.get(id);
+            if(!node){node=document.createElement('span');node.dataset.voteId=id}
+            if(node.innerHTML!==markup)node.innerHTML=markup;
+            if(list.children[position]!==node)list.insertBefore(node,list.children[position]||null);
+            existing.delete(id);
+          });
+          existing.forEach(node=>node.remove());
+        });
+      }
+      const notice=root.querySelector('.ws-refresh-error');if(notice)notice.remove();
+    }catch(e){
+      if(!root.querySelector('.ws-display'))root.innerHTML=shell(error(e.message),'display');
+      else if(!root.querySelector('.ws-refresh-error'))root.querySelector('.ws-caption').insertAdjacentHTML('afterend',`<p class="ws-refresh-error" role="status">Connection interrupted. Reconnecting…</p>`);
+    }finally{refreshTimer=setTimeout(refresh,5000)}
+  }
+  await refresh();
 }
 
 async function showVote(){

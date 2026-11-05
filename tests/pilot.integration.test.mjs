@@ -104,6 +104,7 @@ test('company plans, HR access, employee seats, screens, and photo cleanup', { s
     assert.equal(vote.statusCode,201);
     const live=await call('GET',`/org/${slug}/display?screen=${screen.token}`);
     assert.equal(live.body.poll.people[0].display_name,'Nour');
+    assert.match(live.body.poll.people[0].vote_id,/^[0-9a-f-]{36}$/i);
     assert.ok(live.body.poll.people[0].photo_data);
     assert.equal((await call('PATCH',`/org/${slug}/polls/${pollId}`,{status:'closed'},cookie)).statusCode,200);
     assert.equal((await db.query('select photo_data from votes where poll_id=$1',[pollId])).rows[0].photo_data,null);
