@@ -48,6 +48,7 @@ create table if not exists employee_access (
   unique (organization_id,email)
 );
 create index if not exists employee_access_org_active on employee_access (organization_id,is_active);
+alter table employee_access add column if not exists access_code_hash text;
 insert into employee_access(organization_id,email)
 select organization_id,lower(email) from members where role='employee'
 on conflict (organization_id,email) do nothing;
@@ -63,6 +64,13 @@ create table if not exists login_codes (
   created_at timestamptz not null default now()
 );
 create index if not exists login_codes_lookup on login_codes (organization_id,email,created_at desc);
+
+create table if not exists auth_rate_limits (
+  key text primary key,
+  attempts integer not null default 0,
+  window_started_at timestamptz not null default now()
+);
+create index if not exists auth_rate_limits_started on auth_rate_limits (window_started_at);
 
 create table if not exists admin_email_codes (
   id uuid primary key default gen_random_uuid(),
@@ -193,6 +201,7 @@ begin
       update polls set status = 'live', updated_at = now() where id = due_id;
     end if;
   end loop;
+  delete from auth_rate_limits where window_started_at < now() - interval '1 day';
 end $$;
 revoke all on function public.huddl_sync_due_polls() from public, anon, authenticated;
 select cron.schedule('huddl-scheduled-polls', '* * * * *',
@@ -214,6 +223,7 @@ create index if not exists audit_org_created on audit_events (organization_id,cr
 alter table organizations enable row level security;
 alter table members enable row level security;
 alter table employee_access enable row level security;
+alter table auth_rate_limits enable row level security;
 alter table login_codes enable row level security;
 alter table admin_email_codes enable row level security;
 alter table admin_invites enable row level security;
@@ -230,4 +240,4 @@ do $$ begin
     alter table organizations add constraint screen_limit_range check (screen_limit between 1 and 100);
   end if;
 end $$;
-revoke all on organizations,members,employee_access,login_codes,admin_email_codes,admin_invites,polls,poll_options,votes,audit_events,display_screens from anon,authenticated;
+revoke all on organizations,members,employee_access,auth_rate_limits,login_codes,admin_email_codes,admin_invites,polls,poll_options,votes,audit_events,display_screens from anon,authenticated;

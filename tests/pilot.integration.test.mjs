@@ -14,7 +14,7 @@ test('company plans, HR access, employee seats, screens, and photo cleanup', { s
   let orgId,childOrgId;
   const call=async(method,path,body,cookie='')=>{
     const response={headers:{},statusCode:200,setHeader(key,value){this.headers[key]=value},status(code){this.statusCode=code;return this},json(value){this.body=value;return this},send(value){this.body=value;return this}};
-    await handler({method,url:`/api${path}`,body,headers:{cookie}},response);
+    await handler({method,url:`/api${path}`,body,headers:{cookie,...(method!=='GET'?{'x-huddl-request':'1'}:{})}},response);
     return response;
   };
   try{
@@ -69,19 +69,22 @@ test('company plans, HR access, employee seats, screens, and photo cleanup', { s
     assert.equal((await call('POST','/auth/admin',{slug:childSlug,email:'hr-new@example.com',password:'new-hr-password-12345'})).statusCode,200);
     const imported=await call('POST',`/org/${childSlug}/access`,{emails:['salma@example.com','omar@example.com']},hrCookie);
     assert.equal(imported.body.assigned,2);
-    const firstStep=await call('POST','/auth/join',{slug:childSlug,email:'omar@example.com'});
+    const omarCode=imported.body.codes.find(x=>x.email==='omar@example.com').code;
+    assert.equal((await call('POST','/auth/join',{slug:childSlug,email:'omar@example.com'})).statusCode,401);
+    assert.equal((await call('POST','/auth/join',{slug:childSlug,email:'omar@example.com',access_code:'wrong'})).statusCode,401);
+    const firstStep=await call('POST','/auth/join',{slug:childSlug,email:'omar@example.com',access_code:omarCode});
     assert.equal(firstStep.body.profile_required,true);
     assert.equal(firstStep.headers['Set-Cookie'],undefined);
-    assert.equal((await call('POST','/auth/join',{slug:childSlug,email:'omar@example.com',name:'Omar',job_title:'Designer'})).statusCode,400);
-    const firstLogin=await call('POST','/auth/join',{slug:childSlug,email:'omar@example.com',name:'Omar',department:'Product',job_title:'Designer'});
+    assert.equal((await call('POST','/auth/join',{slug:childSlug,email:'omar@example.com',access_code:omarCode,name:'Omar',job_title:'Designer'})).statusCode,400);
+    const firstLogin=await call('POST','/auth/join',{slug:childSlug,email:'omar@example.com',access_code:omarCode,name:'Omar',department:'Product',job_title:'Designer'});
     assert.equal(firstLogin.statusCode,200);
     assert.match(firstLogin.headers['Set-Cookie'],/Max-Age=7776000/);
     assert.equal((await db.query('select job_title from members where organization_id=$1 and email=$2',[childOrgId,'omar@example.com'])).rows[0].job_title,'Designer');
     assert.equal((await db.query('select department from members where organization_id=$1 and email=$2',[childOrgId,'omar@example.com'])).rows[0].department,'Product');
-    const returning=await call('POST','/auth/join',{slug:childSlug,email:'omar@example.com'});
+    const returning=await call('POST','/auth/join',{slug:childSlug,email:'omar@example.com',access_code:omarCode});
     assert.equal(returning.body.profile_required,false);
     assert.equal(returning.body.name,'Omar');
-    assert.equal((await call('POST','/auth/join',{slug:childSlug,email:'outsider@example.com'})).statusCode,403);
+    assert.equal((await call('POST','/auth/join',{slug:childSlug,email:'outsider@example.com',access_code:omarCode})).statusCode,401);
     assert.equal((await call('POST','/auth/request',{slug:childSlug,email:'omar@example.com'})).statusCode,404);
     assert.equal((await call('POST',`/org/${childSlug}/access`,{emails:['third@example.com']},hrCookie)).statusCode,409);
     assert.equal((await call('POST',`/org/${childSlug}/screens`,{name:'Extra screen'},hrCookie)).statusCode,409);
@@ -97,6 +100,11 @@ test('company plans, HR access, employee seats, screens, and photo cleanup', { s
     const childPollId=(await db.query("insert into polls(organization_id,question,status) values($1,'Team lunch today?','live') returning id",[childOrgId])).rows[0].id;
     const childOptionId=(await db.query("insert into poll_options(poll_id,label,position) values($1,'Koshary',0) returning id",[childPollId])).rows[0].id;
     await db.query("insert into votes(organization_id,poll_id,option_id,member_id,show_identity,photo_data) values($1,$2,$3,$4,true,'data:image/jpeg;base64,/9j/2Q==')",[childOrgId,childPollId,childOptionId,employeeId]);
+    const publicDisplay=await call('GET',`/org/${childSlug}/display`);
+    assert.equal(publicDisplay.body.poll.people.length,0);
+    const childScreens=await call('GET',`/org/${childSlug}/screens`,null,hrCookie);
+    const protectedDisplay=await call('GET',`/org/${childSlug}/display?screen=${childScreens.body.screens[0].token}`);
+    assert.equal(protectedDisplay.body.poll.people.length,1);
     const employeeToken=await new SignJWT({sub:employeeId,org:childOrgId,role:'employee',name:'Salma',email:'salma@example.com'}).setProtectedHeader({alg:'HS256'}).setIssuedAt().setExpirationTime('90d').sign(new TextEncoder().encode(process.env.SESSION_SECRET));
     const employeeCookie=`huddl_session=${employeeToken}`;
     assert.equal((await call('GET','/me',null,employeeCookie)).statusCode,200);
@@ -130,7 +138,7 @@ test('company plans, HR access, employee seats, screens, and photo cleanup', { s
     assert.equal(ownProfile.body.history.length,2);
     assert.equal(ownProfile.body.history.find(v=>v.mode==='anonymous').choice,'Secret answer');
     assert.equal((await call('PATCH',`/org/${childSlug}/access/${salma.id}`,{is_active:false},hrCookie)).statusCode,200);
-    assert.equal((await call('GET','/me',null,employeeCookie)).statusCode,403);
+    assert.equal((await call('GET','/me',null,employeeCookie)).statusCode,401);
     assert.equal((await call('GET',`/org/${childSlug}/profiles/${employeeId}`,null,firstLogin.headers['Set-Cookie'])).statusCode,404);
     const hiddenVote=(await db.query('select show_identity,photo_data from votes where poll_id=$1 and member_id=$2',[childPollId,employeeId])).rows[0];
     assert.equal(hiddenVote.show_identity,false);
