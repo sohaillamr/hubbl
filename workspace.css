@@ -36,8 +36,7 @@ body:has(.ws-main){background:var(--company-tint,#f7f4eb);transition:background 
 @media(prefers-reduced-motion:reduce){.ws-results article,.ws-toast{animation:none}.ws-panel,.ws-stat,.ws-meter i{transition:none}}
 @media(max-width:760px){.ws-screen-actions{align-items:flex-start}.ws-people>span{max-width:100%;overflow-wrap:anywhere}.platform-links{align-items:flex-start}}
 
-.ws-card form[hidden],.ws-panel form[hidden],#profile-fields[hidden]{display:none}
-#profile-fields{display:grid;gap:14px}
+.ws-card form[hidden],.ws-panel form[hidden]{display:none}
 .ws-access-list{margin-top:18px;max-height:380px;overflow:auto;border-top:1px solid var(--company-border,#ddd)}
 .ws-access-row{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid #e8e6e0;font-size:12px}
 .ws-access-row>div{flex:1;min-width:0;overflow-wrap:anywhere}.ws-access-row strong,.ws-access-row small{display:block}.ws-access-row small{color:#777;margin-top:3px}

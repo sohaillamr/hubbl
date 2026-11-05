@@ -47,6 +47,39 @@ test('HR portal shows company theme, screen controls, and a save toast',async()=
   w.close();
 });
 
+test('employee joins from the HR email list without a verification message',async()=>{
+  const dom=new JSDOM('<div id="app"></div>',{url:'https://huddl.test/workspace?org=demo&view=vote',runScripts:'outside-only'});
+  const w=dom.window,calls=[];
+  let joined=false;
+  w.fetch=async(url,options={})=>{
+    calls.push({url,options});
+    if(url==='/api/org/demo/display')return {ok:true,json:async()=>({organization:{id:'org-1',slug:'demo',name:'Cairo Team',accent_color:'#244f9b'},poll:null})};
+    if(url==='/api/me')return joined?{ok:true,json:async()=>({id:'member-1',org:'org-1',role:'employee',name:'Salma'})}:{ok:false,json:async()=>({error:'Sign in required'})};
+    if(url==='/api/auth/join'){
+      const data=JSON.parse(options.body);
+      if(data.name)joined=true;
+      return {ok:true,json:async()=>({profile_required:!joined,name:data.name})};
+    }
+    throw Error(`Unexpected request: ${url}`);
+  };
+  w.eval(source);await tick();await tick();
+  const emailForm=w.document.querySelector('#email-form');
+  emailForm.querySelector('[name=email]').value='salma@company.com';
+  emailForm.dispatchEvent(new w.SubmitEvent('submit',{bubbles:true,cancelable:true,submitter:emailForm.querySelector('button')}));
+  await tick();await tick();
+  assert.equal(w.document.querySelector('#profile-form').hidden,false);
+  assert.equal(w.document.querySelector('#code-form'),null);
+  const profile=w.document.querySelector('#profile-form');
+  profile.querySelector('[name=name]').value='Salma';profile.querySelector('[name=department]').value='Design';
+  profile.dispatchEvent(new w.SubmitEvent('submit',{bubbles:true,cancelable:true,submitter:profile.querySelector('button')}));
+  await tick();await tick();
+  assert.equal(joined,true);
+  assert.match(w.document.querySelector('.ws-auth h1').textContent,/No question yet/);
+  assert.equal(calls.filter(x=>x.url==='/api/auth/join').length,2);
+  assert.ok(!calls.some(x=>/auth\/(request|verify)/.test(x.url)));
+  w.close();
+});
+
 test('Huddl owner generates company HR access and sees screen links',async()=>{
   const {w,calls}=app('platform');await tick();await tick();
   assert.match(w.document.querySelector('.platform-links').textContent,/1 active screen/);
