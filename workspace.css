@@ -33,3 +33,16 @@ body:has(.ws-main){background:var(--company-tint,#f7f4eb);transition:background 
 @keyframes ws-toast-in{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}@keyframes ws-rise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
 @media(prefers-reduced-motion:reduce){.ws-results article,.ws-toast{animation:none}.ws-panel,.ws-stat,.ws-meter i{transition:none}}
 @media(max-width:760px){.ws-screen-actions{align-items:flex-start}.ws-people>span{max-width:100%;overflow-wrap:anywhere}.platform-links{align-items:flex-start}}
+
+.ws-card form[hidden],.ws-panel form[hidden],#profile-fields[hidden]{display:none}
+#profile-fields{display:grid;gap:14px}
+.ws-access-list{margin-top:18px;max-height:380px;overflow:auto;border-top:1px solid var(--company-border,#ddd)}
+.ws-access-row{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid #e8e6e0;font-size:12px}
+.ws-access-row>div{flex:1;min-width:0;overflow-wrap:anywhere}.ws-access-row strong,.ws-access-row small{display:block}.ws-access-row small{color:#777;margin-top:3px}
+.ws-access-row button{border:1px solid var(--company-border,#aaa);border-radius:5px;background:#fff;padding:7px 9px;font-size:11px;font-weight:800}
+.ws-access-row button:hover{background:var(--company-soft,#eee)}
+.ws-credentials{margin-bottom:26px;background:var(--company-tint,#fff)!important;border-color:var(--company-accent,#ef473d)!important}
+.ws-credentials dl{display:grid;grid-template-columns:150px minmax(0,1fr);gap:10px;margin:18px 0}.ws-credentials dt{font-size:12px;color:#666;font-weight:800}.ws-credentials dd{margin:0;overflow-wrap:anywhere;font-size:13px}.ws-credentials code{font-size:16px;font-weight:800}.ws-credentials small{display:block;margin-top:12px;color:#666}
+.platform-org{grid-template-columns:repeat(3,minmax(0,1fr)) auto auto}.platform-org>div:first-child{grid-column:1/-1}.platform-numbers{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:12px}.platform-org label{min-width:0}
+.platform-org .ws-check{align-self:end}.platform-org>.button{align-self:end}
+@media(max-width:760px){.platform-org{grid-template-columns:repeat(2,minmax(0,1fr))}.platform-org .ws-check,.platform-org>.button{align-self:end}.ws-credentials dl{grid-template-columns:1fr;gap:3px}.ws-credentials dd{margin-bottom:10px}}

@@ -4,13 +4,15 @@ Huddl runs a daily workplace question for each company. Employees vote from thei
 
 ## Live pilot
 
-The multi-company app is at `/workspace?org=COMPANY-SLUG&view=vote`. Replace `vote` with `display` for an office screen or `admin` for HR. The Huddl owner uses `/workspace?view=platform` to create and pause company spaces, see participation and screen links, and send HR invitations.
+The multi-company app is at `/workspace?org=COMPANY-SLUG&view=vote`. Replace `vote` with `display` for an office screen or `admin` for HR. The Huddl owner uses `/workspace?view=platform` to create companies with a seat and live-screen allowance, adjust those limits, pause spaces, and see participation and screen links. New companies start with the selected number of named screen links.
 
-HR can create questions with 2–8 choices, publish or close them, manage screen links, see members and participation, and upload a logo. A logo upload suggests colors; the saved color themes the entire company portal. Buttons show progress and action toasts.
+HR can upload a CSV or paste employee emails, up to the assigned seat allowance, and remove or restore individual access. New companies accept only emails on that list. An employee verifies ownership with an emailed code on first use, saves their name, department, and optional job title, then uses a renewable 90-day session. Removing an email revokes its existing session. Returning employees do not re-enter their profile, even if they later need a new email code.
 
-Employees verify their email on first use. Their name and department are kept in their member record, and their secure session lasts 90 days with renewal during use. Social votes can include a fresh camera photo when the employee opts to appear on the office screen. Photos are stored on the vote only while its question is live; a database trigger deletes them when HR closes or replaces the question or pauses the company. Anonymous votes store no photo.
+HR can also create questions with 2–8 choices, publish or close them, manage screen names and locations within the screen limit, see members and participation, and upload a logo. A logo upload suggests colors; the saved color themes the entire company portal. Buttons show progress and action toasts.
 
-Each company has named display screens with a separate link. Deactivating a screen invalidates its link. HR owners receive a one-time link to set their password. The link expires after seven days and can be resent from the platform dashboard. Admin passwords are never included in email.
+Social votes can include a fresh camera photo when the employee opts to appear on the office screen. Photos are stored on the vote only while its question is live; a database trigger deletes them when HR closes or replaces the question or pauses the company. Anonymous votes store no photo.
+
+Each company has named display screens with a separate link. Deactivating a screen invalidates its link. Creating a company generates a temporary HR password, emails it with the HR portal link, and shows it to the Huddl owner once. HR must replace it on first login; it expires after seven days. The owner can send a one-time password setup link if HR loses access. HR can later change its password or verify a new login email. Changing credentials revokes older sessions.
 
 For an existing owner who needs a first invitation before signing in, set `OWNER_EMAIL` with the database and email environment variables, then run `node scripts/invite-owner.mjs`.
 
@@ -32,7 +34,7 @@ The Vercel Marketplace Resend integration currently requires a Vercel-purchased 
 
 ## Verification
 
-`npm test` runs browser demo and live-workspace UI tests. The database integration test also runs when `DATABASE_URL` is set; it creates a disposable company, tests an HR invite, screen activation, a live photo vote, and photo deletion on close. `npm run build` checks the Vercel bundle.
+`npm test` runs browser demo and live-workspace UI tests. The database integration test also runs when `DATABASE_URL` is set; it creates disposable companies and checks seat and screen limits, HR credential changes, access revocation, an HR invite, a live photo vote, and photo deletion on close. `npm run build` checks the Vercel bundle.
 
 ## Current pilot scope
 

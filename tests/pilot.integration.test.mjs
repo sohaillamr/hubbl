@@ -1,17 +1,17 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { randomUUID, randomBytes, createHash } from 'node:crypto';
+import { randomUUID, randomBytes, createHash, scryptSync } from 'node:crypto';
 import { Client } from 'pg';
 import { SignJWT } from 'jose';
 import handler from '../api/index.js';
 
-test('company screens, a live photo vote, and photo deletion on close', { skip: !process.env.DATABASE_URL }, async () => {
+test('company plans, HR access, employee seats, screens, and photo cleanup', { skip: !process.env.DATABASE_URL }, async () => {
   process.env.SESSION_SECRET ||= 'huddl-integration-test-secret-please-change';
   const db = new Client({connectionString:process.env.DATABASE_URL,ssl:{rejectUnauthorized:!!process.env.SUPABASE_CA_CERT,...(process.env.SUPABASE_CA_CERT?{ca:process.env.SUPABASE_CA_CERT}:{})}});
   await db.connect();
   const slug=`test-${randomUUID().slice(0,8)}`;
   const previousPlatformEmail=process.env.PLATFORM_ADMIN_EMAIL;
-  let orgId;
+  let orgId,childOrgId;
   const call=async(method,path,body,cookie='')=>{
     const response={headers:{},statusCode:200,setHeader(key,value){this.headers[key]=value},status(code){this.statusCode=code;return this},json(value){this.body=value;return this}};
     await handler({method,url:`/api${path}`,body,headers:{cookie}},response);
@@ -21,12 +21,13 @@ test('company screens, a live photo vote, and photo deletion on close', { skip: 
     orgId=(await db.query('insert into organizations(slug,name) values($1,$2) returning id',[slug,'Test Company'])).rows[0].id;
     const memberId=(await db.query("insert into members(organization_id,email,display_name,department,role) values($1,$2,'Nour','People','owner') returning id",[orgId,`${slug}@example.com`])).rows[0].id;
     const token=await new SignJWT({sub:memberId,org:orgId,role:'owner',name:'Nour',email:`${slug}@example.com`}).setProtectedHeader({alg:'HS256'}).setIssuedAt().setExpirationTime('90d').sign(new TextEncoder().encode(process.env.SESSION_SECRET));
-    const cookie=`huddl_session=${token}`;
+    let cookie=`huddl_session=${token}`;
     const inviteToken=randomBytes(32).toString('hex');
     await db.query("insert into admin_invites(organization_id,member_id,token_hash,expires_at) values($1,$2,$3,now()+interval '7 days')",[orgId,memberId,createHash('sha256').update(inviteToken).digest('hex')]);
     const accepted=await call('POST','/auth/invite/accept',{token:inviteToken,password:'test-password-12345'});
     assert.equal(accepted.statusCode,200);
     assert.match(accepted.headers['Set-Cookie'],/Max-Age=7776000/);
+    cookie=accepted.headers['Set-Cookie'];
     assert.equal((await call('POST','/auth/invite/accept',{token:inviteToken,password:'test-password-12345'})).statusCode,410);
 
     const created=await call('POST',`/org/${slug}/screens`,{name:'Kitchen',location:'Floor 2'},cookie);
@@ -38,6 +39,59 @@ test('company screens, a live photo vote, and photo deletion on close', { skip: 
     assert.equal(overview.statusCode,200);
     assert.equal(overview.body.organizations.find(o=>o.id===orgId).screens,1);
     assert.equal((await call('GET',`/org/${slug}/display?screen=${screen.token}`)).statusCode,200);
+
+    const childSlug=`plan-${randomUUID().slice(0,8)}`;
+    const company=await call('POST','/platform/organizations',{slug:childSlug,name:'Plan Test',email:'hr@example.com',admin_name:'HR Manager',seat_limit:2,screen_limit:2},cookie);
+    assert.equal(company.statusCode,201);
+    childOrgId=company.body.id;
+    assert.equal((await db.query('select count(*)::int as n from display_screens where organization_id=$1 and is_active=true',[childOrgId])).rows[0].n,2);
+    const login=await call('POST','/auth/admin',{slug:childSlug,email:'hr@example.com',password:company.body.temporary_password});
+    assert.equal(login.body.must_change_password,true);
+    const temporaryCookie=login.headers['Set-Cookie'];
+    assert.equal((await call('GET','/me',null,temporaryCookie)).body.must_change_password,true);
+    assert.equal((await call('GET',`/org/${childSlug}/access`,null,temporaryCookie)).statusCode,403);
+    const changed=await call('POST','/auth/password',{current_password:company.body.temporary_password,new_password:'new-hr-password-12345'},temporaryCookie);
+    assert.equal(changed.statusCode,200);
+    assert.equal((await call('GET','/me',null,temporaryCookie)).statusCode,401);
+    let hrCookie=changed.headers['Set-Cookie'];
+    const hrId=(await db.query('select id from members where organization_id=$1 and email=$2',[childOrgId,'hr@example.com'])).rows[0].id;
+    const salt=randomBytes(16).toString('hex'),emailCode='123456';
+    await db.query("insert into admin_email_codes(member_id,new_email,code_hash,expires_at) values($1,$2,$3,now()+interval '10 minutes')",[hrId,'hr-new@example.com',`${salt}:${scryptSync(emailCode,salt,64).toString('hex')}`]);
+    const emailChanged=await call('POST','/auth/admin-email/verify',{email:'hr-new@example.com',code:emailCode},hrCookie);
+    assert.equal(emailChanged.statusCode,200);
+    assert.equal((await call('GET','/me',null,hrCookie)).statusCode,401);
+    hrCookie=emailChanged.headers['Set-Cookie'];
+    assert.equal((await call('POST','/auth/admin',{slug:childSlug,email:'hr-new@example.com',password:'new-hr-password-12345'})).statusCode,200);
+    const imported=await call('POST',`/org/${childSlug}/access`,{emails:['salma@example.com','omar@example.com']},hrCookie);
+    assert.equal(imported.body.assigned,2);
+    const employeeSalt=randomBytes(16).toString('hex'),employeeCode='654321';
+    await db.query("insert into login_codes(organization_id,email,code_hash,expires_at) values($1,$2,$3,now()+interval '10 minutes')",[childOrgId,'omar@example.com',`${employeeSalt}:${scryptSync(employeeCode,employeeSalt,64).toString('hex')}`]);
+    const firstLogin=await call('POST','/auth/verify',{slug:childSlug,email:'omar@example.com',code:employeeCode,name:'Omar',department:'',job_title:'Designer'});
+    assert.equal(firstLogin.statusCode,200);
+    assert.equal((await db.query('select job_title from members where organization_id=$1 and email=$2',[childOrgId,'omar@example.com'])).rows[0].job_title,'Designer');
+    assert.equal((await call('POST','/auth/request',{slug:childSlug,email:'outsider@example.com'})).statusCode,403);
+    assert.equal((await call('POST',`/org/${childSlug}/access`,{emails:['third@example.com']},hrCookie)).statusCode,409);
+    assert.equal((await call('POST',`/org/${childSlug}/screens`,{name:'Extra screen'},hrCookie)).statusCode,409);
+    assert.equal((await call('PATCH',`/platform/organizations/${childOrgId}`,{name:'Plan Test',is_active:true,seat_limit:1,screen_limit:2},cookie)).statusCode,409);
+    const expanded=await call('PATCH',`/platform/organizations/${childOrgId}`,{name:'Plan Test',is_active:true,seat_limit:2,screen_limit:3},cookie);
+    assert.equal(expanded.body.screens_added,1);
+    const reduced=await call('PATCH',`/platform/organizations/${childOrgId}`,{name:'Plan Test',is_active:true,seat_limit:2,screen_limit:1},cookie);
+    assert.equal(reduced.body.screens_deactivated,2);
+    assert.equal((await db.query('select count(*)::int as n from display_screens where organization_id=$1 and is_active=true',[childOrgId])).rows[0].n,1);
+    const list=await call('GET',`/org/${childSlug}/access`,null,hrCookie);
+    const salma=list.body.access.find(x=>x.email==='salma@example.com');
+    const employeeId=(await db.query("insert into members(organization_id,email,display_name,department,role) values($1,'salma@example.com','Salma','Design','employee') returning id",[childOrgId])).rows[0].id;
+    const childPollId=(await db.query("insert into polls(organization_id,question,status) values($1,'Team lunch today?','live') returning id",[childOrgId])).rows[0].id;
+    const childOptionId=(await db.query("insert into poll_options(poll_id,label,position) values($1,'Koshary',0) returning id",[childPollId])).rows[0].id;
+    await db.query("insert into votes(organization_id,poll_id,option_id,member_id,show_identity,photo_data) values($1,$2,$3,$4,true,'data:image/jpeg;base64,/9j/2Q==')",[childOrgId,childPollId,childOptionId,employeeId]);
+    const employeeToken=await new SignJWT({sub:employeeId,org:childOrgId,role:'employee',name:'Salma',email:'salma@example.com'}).setProtectedHeader({alg:'HS256'}).setIssuedAt().setExpirationTime('90d').sign(new TextEncoder().encode(process.env.SESSION_SECRET));
+    const employeeCookie=`huddl_session=${employeeToken}`;
+    assert.equal((await call('GET','/me',null,employeeCookie)).statusCode,200);
+    assert.equal((await call('PATCH',`/org/${childSlug}/access/${salma.id}`,{is_active:false},hrCookie)).statusCode,200);
+    assert.equal((await call('GET','/me',null,employeeCookie)).statusCode,403);
+    const hiddenVote=(await db.query('select show_identity,photo_data from votes where poll_id=$1 and member_id=$2',[childPollId,employeeId])).rows[0];
+    assert.equal(hiddenVote.show_identity,false);
+    assert.equal(hiddenVote.photo_data,null);
 
     const pollId=(await db.query("insert into polls(organization_id,question,status,mode) values($1,'Tea or coffee today?','live','social') returning id",[orgId])).rows[0].id;
     const optionId=(await db.query("insert into poll_options(poll_id,label,position) values($1,'Tea',0) returning id",[pollId])).rows[0].id;
@@ -54,6 +108,7 @@ test('company screens, a live photo vote, and photo deletion on close', { skip: 
     assert.equal((await call('GET',`/org/${slug}/display?screen=${screen.token}`)).statusCode,404);
   }finally{
     if(previousPlatformEmail===undefined)delete process.env.PLATFORM_ADMIN_EMAIL;else process.env.PLATFORM_ADMIN_EMAIL=previousPlatformEmail;
+    if(childOrgId)await db.query('delete from organizations where id=$1',[childOrgId]);
     if(orgId)await db.query('delete from organizations where id=$1',[orgId]);
     await db.end();
   }
