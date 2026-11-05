@@ -12,6 +12,8 @@ Employees verify their email on first use. Their name and department are kept in
 
 Each company has named display screens with a separate link. Deactivating a screen invalidates its link. HR owners receive a one-time link to set their password. The link expires after seven days and can be resent from the platform dashboard. Admin passwords are never included in email.
 
+For an existing owner who needs a first invitation before signing in, set `OWNER_EMAIL` with the database and email environment variables, then run `node scripts/invite-owner.mjs`.
+
 ## Run locally
 
 ```bash
