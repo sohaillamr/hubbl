@@ -1,1 +1,1 @@
-{"rewrites":[{"source":"/api/(.*)","destination":"/api/index?route=$1"},{"source":"/(.*)","destination":"/index.html"}]}
+{"functions":{"api/index.js":{"includeFiles":"fonts/Cairo.ttf","maxDuration":30}},"rewrites":[{"source":"/api/(.*)","destination":"/api/index?route=$1"},{"source":"/(.*)","destination":"/index.html"}]}

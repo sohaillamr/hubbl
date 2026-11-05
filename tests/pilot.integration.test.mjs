@@ -13,7 +13,7 @@ test('company plans, HR access, employee seats, screens, and photo cleanup', { s
   const previousPlatformEmail=process.env.PLATFORM_ADMIN_EMAIL;
   let orgId,childOrgId;
   const call=async(method,path,body,cookie='')=>{
-    const response={headers:{},statusCode:200,setHeader(key,value){this.headers[key]=value},status(code){this.statusCode=code;return this},json(value){this.body=value;return this}};
+    const response={headers:{},statusCode:200,setHeader(key,value){this.headers[key]=value},status(code){this.statusCode=code;return this},json(value){this.body=value;return this},send(value){this.body=value;return this}};
     await handler({method,url:`/api${path}`,body,headers:{cookie}},response);
     return response;
   };
@@ -105,6 +105,20 @@ test('company plans, HR access, employee seats, screens, and photo cleanup', { s
     const hiddenVote=(await db.query('select show_identity,photo_data from votes where poll_id=$1 and member_id=$2',[childPollId,employeeId])).rows[0];
     assert.equal(hiddenVote.show_identity,false);
     assert.equal(hiddenVote.photo_data,null);
+    assert.equal((await call('PATCH',`/org/${childSlug}/context`,{description:'Cairo product team',policy_context:'Employees may work remotely on Tuesdays.'},hrCookie)).statusCode,200);
+    assert.match((await call('GET',`/org/${childSlug}/context`,null,hrCookie)).body.policy_context,/Tuesdays/);
+    const report=await call('GET',`/org/${childSlug}/reports/${childPollId}`,null,hrCookie);
+    assert.equal(report.statusCode,200);
+    assert.equal(report.headers['Content-Type'],'application/pdf');
+    assert.equal(report.body.subarray(0,4).toString(),'%PDF');
+    const start=new Date(Date.now()+3600000),end=new Date(Date.now()+7200000);
+    const scheduled=await call('POST',`/org/${childSlug}/polls`,{question:'Tuesday team lunch?',options:['Koshary','Hawawshi'],mode:'social',opens_at:start.toISOString(),closes_at:end.toISOString()},hrCookie);
+    assert.equal(scheduled.statusCode,201);
+    assert.equal(scheduled.body.scheduled,true);
+    assert.equal((await call('POST',`/org/${childSlug}/polls`,{question:'Overlapping lunch?',options:['Yes','No'],opens_at:start.toISOString(),closes_at:end.toISOString()},hrCookie)).statusCode,409);
+    await db.query("update polls set opens_at=now()-interval '1 minute',closes_at=now()+interval '1 hour' where id=$1",[scheduled.body.id]);
+    assert.equal((await call('GET',`/org/${childSlug}/display`)).body.poll.id,scheduled.body.id);
+    assert.equal((await db.query('select status from polls where id=$1',[childPollId])).rows[0].status,'closed');
 
     const pollId=(await db.query("insert into polls(organization_id,question,status,mode) values($1,'Tea or coffee today?','live','social') returning id",[orgId])).rows[0].id;
     const optionId=(await db.query("insert into poll_options(poll_id,label,position) values($1,'Tea',0) returning id",[pollId])).rows[0].id;

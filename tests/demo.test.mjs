@@ -13,6 +13,15 @@ function app(route = '/admin') {
   return window;
 }
 
+test('landing ticker has identical long halves for a seamless loop',()=>{
+  const w=app('/');
+  const groups=[...w.document.querySelectorAll('.ticker-group')];
+  assert.equal(groups.length,2);
+  assert.equal(groups[0].textContent,groups[1].textContent);
+  assert.ok(groups[0].textContent.match(/KOSHARY/g).length>=4);
+  w.close();
+});
+
 test('HR can add and remove choices within 2–8 limit', () => {
   const w = app();
   const count = () => w.document.querySelectorAll('.option-field').length;

@@ -18,6 +18,8 @@ function app(view='admin'){
     if(url.endsWith('/display'))data={organization:org,poll:null};
     if(url.endsWith('/screens'))data={screens:[screen],screen_limit:2,active:1};
     if(url.endsWith('/access'))data=options.method==='POST'?{added:2,assigned:2,seat_limit:100}:{seat_limit:100,assigned:0,enforce_allowlist:true,access:[]};
+    if(url.endsWith('/context'))data=options.method==='PATCH'?{ok:true}:{description:'Cairo team',policy_context:'Remote Tuesdays'};
+    if(url.endsWith('/ai/questions'))data={questions:[{question:'Which Cairo lunch wins?',options:['Koshary','Hawawshi'],mode:'social',rationale:'A fun lunch vote.'}]};
     if(url==='/api/platform/overview')data={totals:{companies:1,members:3,votes:5},email_test_mode:true,organizations:[{...org,owner_email:'hr@demo.test',hr_link:'https://huddl.test/workspace?org=demo&view=admin',members:3,polls:1,votes:5,screens:1,screen_limit:2,seat_limit:100,seats_used:0,is_active:true,display_screens:[screen]}]};
     if(url==='/api/platform/organizations/org-1/send-portal')data={sent:true,email:'hr@demo.test',one_time_link:'https://huddl.test/workspace?org=demo&view=admin&invite=secret'};
     if(url==='/api/platform/organizations'&&options.method==='POST')data={slug:'new-company',email_sent:false,temporary_password:'temporary-secret-123',hr_email:'hr@example.com',hr_link:'https://huddl.test/workspace?org=new-company&view=admin'};
@@ -34,6 +36,12 @@ test('HR portal shows company theme, screen controls, and a save toast',async()=
   assert.match(w.document.querySelector('.ws-screen-list .ws-screen-actions a').href,/screen=token-1/);
   assert.ok(w.document.querySelector('#change-email-request'));
   assert.equal(w.document.querySelector('#send-portal'),null);
+  assert.equal(w.document.querySelector('#screen-choice').value,'token-1');
+  let opened='';w.open=url=>{opened=url};w.document.querySelector('#open-selected-screen').click();
+  assert.match(opened,/screen=token-1/);
+  assert.ok(w.document.querySelector('#context-form'));
+  assert.ok(w.document.querySelector('#ai-form'));
+  assert.ok(w.document.querySelector('.schedule-fields [name=opens_at]'));
   const access=w.document.querySelector('#access-import');
   access.querySelector('textarea').value='salma@company.com\nomar@company.com';
   access.dispatchEvent(new w.SubmitEvent('submit',{bubbles:true,cancelable:true,submitter:access.querySelector('button')}));
@@ -44,6 +52,24 @@ test('HR portal shows company theme, screen controls, and a save toast',async()=
   await tick();await tick();
   assert.ok(calls.some(x=>x.url==='/api/org/demo/branding'&&x.options.method==='PATCH'));
   assert.match(w.document.querySelector('#huddl-toast').textContent,/Brand saved/);
+  const context=w.document.querySelector('#context-form');
+  context.querySelector('[name=description]').value='Cairo design studio';
+  context.dispatchEvent(new w.SubmitEvent('submit',{bubbles:true,cancelable:true,submitter:context.querySelector('button')}));
+  await tick();await tick();
+  assert.ok(calls.some(x=>x.url==='/api/org/demo/context'&&x.options.method==='PATCH'));
+  const ai=w.document.querySelector('#ai-form');
+  ai.dispatchEvent(new w.SubmitEvent('submit',{bubbles:true,cancelable:true,submitter:ai.querySelector('button')}));
+  await tick();await tick();
+  assert.ok(calls.some(x=>x.url==='/api/org/demo/ai/questions'));
+  w.document.querySelector('.ai-suggestion button').click();
+  assert.equal(w.document.querySelector('#create-poll [name=question]').value,'Which Cairo lunch wins?');
+  const draft=w.document.querySelector('#create-poll');
+  draft.elements.opens_at.value='2030-11-05T10:00';draft.elements.closes_at.value='2030-11-05T17:00';
+  draft.dispatchEvent(new w.SubmitEvent('submit',{bubbles:true,cancelable:true,submitter:draft.querySelector('button.button.dark')}));
+  await tick();await tick();
+  const scheduledCall=calls.find(x=>x.url==='/api/org/demo/polls'&&x.options.method==='POST');
+  assert.ok(scheduledCall);
+  assert.ok(JSON.parse(scheduledCall.options.body).opens_at);
   w.close();
 });
 

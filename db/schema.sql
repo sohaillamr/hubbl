@@ -16,6 +16,8 @@ alter table organizations add column if not exists is_active boolean not null de
 alter table organizations add column if not exists seat_limit integer not null default 100;
 alter table organizations add column if not exists screen_limit integer not null default 3;
 alter table organizations add column if not exists enforce_allowlist boolean not null default true;
+alter table organizations add column if not exists company_description text not null default '';
+alter table organizations add column if not exists policy_context text not null default '';
 alter table organizations alter column enforce_allowlist set default true;
 
 create table if not exists members (
@@ -98,6 +100,7 @@ create table if not exists polls (
 );
 create unique index if not exists one_live_poll_per_org on polls (organization_id) where status='live';
 create index if not exists polls_org_created on polls (organization_id,created_at desc);
+create index if not exists polls_scheduled on polls (organization_id,opens_at) where status='draft' and opens_at is not null;
 
 create table if not exists poll_options (
   id uuid primary key default gen_random_uuid(),
