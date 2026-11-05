@@ -73,13 +73,17 @@ test('company plans, HR access, employee seats, screens, and photo cleanup', { s
     const insertOtp=()=>db.query("insert into login_codes(organization_id,email,code_hash,expires_at) values($1,$2,$3,now()+interval '10 minutes')",[childOrgId,'omar@example.com',`${otpSalt}:${scryptSync(omarCode,otpSalt,64).toString('hex')}`]);
     await insertOtp();
     assert.equal((await call('POST','/auth/join',{slug:childSlug,email:'omar@example.com'})).statusCode,401);
-    assert.equal((await call('POST','/auth/join',{slug:childSlug,email:'omar@example.com',code:'wrong'})).statusCode,401);
+    assert.equal((await call('POST','/auth/join',{slug:childSlug,email:'omar@example.com',code:'654321'})).statusCode,401);
+    await db.query("update login_codes set expires_at=now()-interval '1 minute' where organization_id=$1 and email=$2",[childOrgId,'omar@example.com']);
+    assert.equal((await call('POST','/auth/join',{slug:childSlug,email:'omar@example.com',code:omarCode})).statusCode,401);
+    await insertOtp();
     const firstStep=await call('POST','/auth/join',{slug:childSlug,email:'omar@example.com',code:omarCode});
     assert.equal(firstStep.body.profile_required,true);
     assert.equal(firstStep.headers['Set-Cookie'],undefined);
     assert.equal((await call('POST','/auth/join',{slug:childSlug,email:'omar@example.com',code:omarCode,name:'Omar',job_title:'Designer'})).statusCode,400);
     const firstLogin=await call('POST','/auth/join',{slug:childSlug,email:'omar@example.com',code:omarCode,name:'Omar',department:'Product',job_title:'Designer'});
     assert.equal(firstLogin.statusCode,200);
+    assert.equal((await call('POST','/auth/join',{slug:childSlug,email:'omar@example.com',code:omarCode})).statusCode,401);
     assert.match(firstLogin.headers['Set-Cookie'],/Max-Age=7776000/);
     assert.equal((await db.query('select job_title from members where organization_id=$1 and email=$2',[childOrgId,'omar@example.com'])).rows[0].job_title,'Designer');
     assert.equal((await db.query('select department from members where organization_id=$1 and email=$2',[childOrgId,'omar@example.com'])).rows[0].department,'Product');

@@ -79,6 +79,7 @@ export default async function handler(req,res){
       if(!validEmail(email))throw fail(400,'Enter a valid email address');
       const eligible=org.is_active&&(!org.allowed_email_domain||email.endsWith('@'+org.allowed_email_domain))&&(await query("select 1 from employee_access a where a.organization_id=$1 and a.email=$2 and a.is_active=true and not exists(select 1 from members m where m.organization_id=$1 and m.email=$2 and m.role in ('owner','admin'))",[org.id,email])).rows.length;
       if(eligible){
+        if(emailTestMode())throw fail(503,'Employee email verification is unavailable');
         const code=String(randomInt(100000,1000000));
         const entry=(await query("insert into login_codes(organization_id,email,code_hash,expires_at) values($1,$2,$3,now()+interval '10 minutes') returning id",[org.id,email,hash(code)])).rows[0];
         try{await sendCode(email,code,org.name)}catch(e){await query('delete from login_codes where id=$1',[entry.id]);throw e}
