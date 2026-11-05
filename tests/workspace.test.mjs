@@ -5,8 +5,8 @@ import { JSDOM } from 'jsdom';
 
 const source=readFileSync(new URL('../workspace.js',import.meta.url),'utf8').replace(/^import .*;\r?\n/gm,'').replace('injectSpeedInsights();','');
 const tick=()=>new Promise(resolve=>setTimeout(resolve,0));
-function app(view='admin'){
-  const dom=new JSDOM('<div id="app"></div>',{url:`https://huddl.test/workspace?org=demo&view=${view}`,runScripts:'outside-only'});
+function app(view='admin',id=''){
+  const dom=new JSDOM('<div id="app"></div>',{url:`https://huddl.test/workspace?org=demo&view=${view}${id?`&id=${id}`:''}`,runScripts:'outside-only'});
   const w=dom.window,calls=[];
   const org={id:'org-1',slug:'demo',name:'Cairo Team',accent_color:'#244f9b',logo_data:null};
   const screen={id:'screen-1',name:'Kitchen',location:'Floor 2',token:'token-1',is_active:true};
@@ -19,6 +19,8 @@ function app(view='admin'){
     if(url.endsWith('/screens'))data={screens:[screen],screen_limit:2,active:1};
     if(url.endsWith('/access'))data=options.method==='POST'?{added:2,assigned:2,seat_limit:100}:{seat_limit:100,assigned:0,enforce_allowlist:true,access:[]};
     if(url.endsWith('/context'))data=options.method==='PATCH'?{ok:true}:{description:'Cairo team',policy_context:'Remote Tuesdays'};
+    if(url.includes('/profiles?'))data={profiles:[{id:'member-1',display_name:'Nour',department:'People',job_title:'HR lead',role:'owner',profile_photo_data:null},{id:'member-2',display_name:'Salma',department:'Design',job_title:'Designer',role:'employee',profile_photo_data:null}]};
+    if(url.endsWith('/profiles/member-2'))data={profile:{id:'member-2',display_name:'Salma',department:'Design',job_title:'Designer',role:'employee',profile_photo_data:null},own:false,history:[{poll_id:'poll-1',question:'Koshary for lunch?',choice:'Yes',mode:'social',show_identity:true,created_at:'2026-11-06T10:00:00Z'}],match:{shared:2,matching:1,score:6}};
     if(url.endsWith('/ai/questions'))data={questions:[{question:'Which Cairo lunch wins?',options:['Koshary','Hawawshi'],mode:'social',rationale:'A fun lunch vote.'}]};
     if(url==='/api/platform/overview')data={totals:{companies:1,members:3,votes:5},email_test_mode:true,organizations:[{...org,owner_email:'hr@demo.test',hr_link:'https://huddl.test/workspace?org=demo&view=admin',members:3,polls:1,votes:5,screens:1,screen_limit:2,seat_limit:100,seats_used:0,is_active:true,display_screens:[screen]}]};
     if(url==='/api/platform/organizations/org-1/send-portal')data={sent:true,email:'hr@demo.test',one_time_link:'https://huddl.test/workspace?org=demo&view=admin&invite=secret'};
@@ -142,6 +144,19 @@ test('Huddl owner generates company HR access and sees screen links',async()=>{
   w.close();
 });
 
+test('company directory opens teammate profiles with shared votes and match score',async()=>{
+  const directory=app('people');await tick();await tick();await tick();
+  assert.equal(directory.w.document.querySelectorAll('.people-card').length,2);
+  assert.match(directory.w.document.querySelector('.people-card[href*="member-2"]').textContent,/Salma/);
+  directory.w.close();
+  const teammate=app('profile','member-2');await tick();await tick();await tick();
+  assert.match(teammate.w.document.querySelector('.profile-hero').textContent,/Salma/);
+  assert.match(teammate.w.document.querySelector('.match-panel').textContent,/6.*10 match/);
+  assert.match(teammate.w.document.querySelector('.profile-history-list').textContent,/Koshary for lunch/);
+  assert.equal(teammate.w.document.querySelector('#profile-edit-form'),null);
+  teammate.w.close();
+});
+
 test('office screen refreshes votes without rebuilding cards or QR code',async()=>{
   const dom=new JSDOM('<div id="app"></div>',{url:'https://huddl.test/workspace?org=demo&view=display',runScripts:'outside-only'});
   const w=dom.window,timers=[];
@@ -155,6 +170,7 @@ test('office screen refreshes votes without rebuilding cards or QR code',async()
   w.eval(source);await tick();await tick();
   const display=w.document.querySelector('.ws-display'),card=w.document.querySelector('.ws-results article'),qr=w.document.querySelector('#ws-qr');
   assert.ok(display&&card&&qr);
+  assert.equal(w.document.querySelector('.ws-header'),null);
   option.votes=2;poll.total=2;poll.people=[{vote_id:'vote-1',option_id:'option-1',display_name:'Salma',department:'Design',job_title:'Designer',photo_data:null}];
   await timers.shift()();
   assert.equal(w.document.querySelector('.ws-display'),display);
@@ -163,10 +179,15 @@ test('office screen refreshes votes without rebuilding cards or QR code',async()
   assert.equal(w.document.querySelector('.ws-display-foot b').textContent,'2');
   assert.match(card.querySelector('.ws-people').textContent,/Salma/);
   assert.equal(qrCalls,1);
-  const firstPerson=card.querySelector('.ws-people span');
+  const firstPerson=card.querySelector('.ws-note');
   option.votes=3;poll.total=3;poll.people.unshift({vote_id:'vote-2',option_id:'option-1',display_name:'Omar',department:'Product',job_title:'Designer',photo_data:null});
   await timers.shift()();
-  assert.equal(card.querySelectorAll('.ws-people span')[1],firstPerson);
+  assert.equal(card.querySelectorAll('.ws-note')[1],firstPerson);
+  poll.people=Array.from({length:50},(_,i)=>({vote_id:`vote-${i+1}`,option_id:'option-1',display_name:`Person ${i+1}`,department:'Design',job_title:'Designer',photo_data:null}));
+  await timers.shift()();
+  assert.equal(card.querySelectorAll('.ws-note').length,50);
+  assert.ok(card.querySelector('.ws-people').style.gridTemplateColumns);
+  assert.ok(card.querySelector('.ws-note-photo'));
   assert.equal(w.document.querySelector('.ws-display'),display);
   disconnected=true;await timers.shift()();
   assert.equal(w.document.querySelector('.ws-display'),display);

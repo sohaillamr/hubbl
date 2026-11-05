@@ -36,6 +36,7 @@ alter table members add column if not exists job_title text not null default '';
 alter table members add column if not exists must_change_password boolean not null default false;
 alter table members add column if not exists credential_expires_at timestamptz;
 alter table members add column if not exists session_version integer not null default 0;
+alter table members add column if not exists profile_photo_data text;
 
 create table if not exists employee_access (
   id uuid primary key default gen_random_uuid(),
@@ -124,6 +125,7 @@ create table if not exists votes (
 );
 create index if not exists votes_poll_option on votes (poll_id,option_id);
 create index if not exists votes_org_created on votes (organization_id,created_at desc);
+create index if not exists votes_member_shared on votes (member_id,poll_id) where show_identity=true;
 alter table votes add column if not exists photo_data text;
 
 create table if not exists display_screens (
