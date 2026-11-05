@@ -84,6 +84,6 @@ export default async function handler(req,res){
       }
     }
     throw fail(404,'Endpoint not found');
-  }catch(e){console.error('API error',e.code||e.message);return json(res,e.status||(/duplicate key/.test(e.message)?409:500),{error:e.status?e.message:'Request failed'})}
+  }catch(e){console.error('API error',e.code||e.message);return json(res,e.status||(/duplicate key/.test(e.message)?409:500),{error:e.status?e.message:'Request failed',code:e.status?undefined:(e.code||'UNKNOWN')})}
 }
 
