@@ -1,0 +1,37 @@
+/* Office screen inspired by the supplied Poll Place references. */
+body:has(.ws-display-stage){background:#f5f8f8;overflow:hidden}
+.ws-display-stage{height:100dvh;padding:clamp(12px,1.5vw,28px)}
+.ws-display-stage .ws-display{height:100%;min-height:0;padding:clamp(12px,1.5vw,27px);border:0;border-radius:0;background:#fff;box-shadow:none;overflow:hidden}
+.ws-display-stage .ws-display-head{min-height:68px;margin:0;align-items:flex-start}
+.ws-display-stage .ws-display-head>div:first-child{font-size:clamp(20px,1.8vw,30px)}
+.ws-display-stage .ws-display-head img{width:48px;height:48px}
+.ws-display-stage .ws-screen-join{display:flex;align-items:center;gap:10px;font-size:clamp(13px,1.2vw,19px);font-weight:800;white-space:nowrap}
+.ws-display-stage .ws-screen-join>span{padding:3px 5px;background:#ffe838;box-decoration-break:clone}
+.ws-display-stage #ws-qr svg{display:block;width:clamp(68px,6.2vw,104px);height:clamp(68px,6.2vw,104px);padding:4px;border:1px solid #222;background:#fff}
+.ws-display-stage h1,.ws-display-stage .ws-display[data-density=packed] h1{margin:0 0 clamp(12px,1.6vh,22px);max-width:none;font-size:clamp(27px,3vw,54px);line-height:1.15;text-align:start;overflow-wrap:anywhere}
+.ws-display-stage .ws-total-bar{display:flex;flex:none;height:clamp(28px,3.7vh,42px);min-width:0;border:2px solid #222;overflow:hidden}
+.ws-display-stage .ws-total-segment{display:flex;align-items:center;justify-content:center;flex:1 1 0;min-width:0;padding:0 4px;background:var(--segment-color,#ffe838);border-right:2px solid #222;color:#1e1e1d;font-size:clamp(11px,1vw,17px);font-weight:800;overflow:hidden;transition:flex-grow .6s ease}
+.ws-display-stage .ws-total-segment:last-child{border-right:0}.ws-display-stage .ws-total-segment span{overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.ws-display-stage .ws-total-segment b{flex:none;margin-inline-start:5px;white-space:nowrap}
+.ws-display-stage .ws-results,.ws-display-stage .ws-results.many-options{display:grid;grid-template-columns:repeat(var(--option-columns,2),minmax(0,1fr));grid-template-rows:1fr;flex:1;min-height:0;gap:0;border:2px solid #222;border-top:0;background:#fbfdff;overflow:hidden}
+.ws-display-stage .ws-results.many-options{grid-template-rows:repeat(2,minmax(0,1fr))}
+.ws-display-stage .ws-results article{display:flex;flex-direction:column;min-width:0;min-height:0;overflow:hidden;padding:clamp(9px,.9vw,16px);border:0;border-right:2px dashed #aaa;border-radius:0;background:transparent;box-shadow:none;animation:none}
+.ws-display-stage .ws-results article:last-child{border-right:0}
+.ws-display-stage .ws-results.many-options article{border-bottom:2px dashed #aaa}
+.ws-display-stage .ws-results.many-options article:nth-last-child(-n + 4){border-bottom:0}
+.ws-display-stage .ws-result-title,.ws-display-stage .ws-display[data-density=packed] .ws-result-title{display:flex;flex:none;align-items:center;justify-content:center;gap:10px;min-height:30px;font-size:clamp(16px,1.5vw,27px);line-height:1.2}
+.ws-display-stage .ws-result-title strong{display:block;min-width:0;padding:0 7px;background:var(--segment-color,#ffe838);font-weight:800;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ws-display-stage .ws-result-title small{flex:none;font-size:clamp(10px,.8vw,14px);color:#565656;font-weight:700}
+.ws-display-stage .ws-people{display:grid;grid-template-columns:repeat(auto-fill,var(--note-size,132px));grid-auto-rows:var(--note-height,164px);align-content:start;justify-content:start;flex:1;min-height:0;gap:9px;margin-top:clamp(8px,1vh,14px);overflow:auto;scrollbar-width:thin}
+.ws-display-stage .ws-note{position:relative;display:flex;flex-direction:column;width:var(--note-size,132px);height:var(--note-height,164px);min-width:0;min-height:0;padding:5px 5px 7px;border:1px solid #d7d7d7;border-radius:0;background:#fff;box-shadow:2px 3px 5px #0002;overflow:visible;transform:rotate(-1deg)}
+.ws-display-stage .ws-note:nth-child(2n){transform:rotate(1.2deg)}.ws-display-stage .ws-note:nth-child(3n){transform:rotate(-.5deg)}
+.ws-display-stage .ws-note:nth-child(3n),.ws-display-stage .ws-note:nth-child(5n){background:#fff}
+.ws-display-stage .ws-note::before{content:'';position:absolute;top:-5px;left:29%;width:42%;height:10px;background:#f6e91e;box-shadow:0 1px 2px #0002;transform:rotate(-4deg);z-index:1}
+.ws-display-stage .ws-note-photo{display:grid;place-items:center;flex:none;width:100%;height:var(--photo-height,103px);min-height:0;background:#e7eaec;overflow:hidden}
+.ws-display-stage .ws-note-photo img{display:block;width:100%;height:100%;object-fit:cover;border-radius:0}
+.ws-display-stage .ws-note-photo>span{font-family:'Space Grotesk',sans-serif;font-size:38px;font-weight:800;color:#4b5360}
+.ws-display-stage .ws-note strong,.ws-display-stage .ws-display[data-density=relaxed] .ws-note strong{display:block;margin:4px 0 0;font-size:var(--note-font,13px);line-height:1.1;color:#191919;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ws-display-stage .ws-note small,.ws-display-stage .ws-display[data-density=relaxed] .ws-note small{display:block;margin:2px 0 0;font-size:var(--note-small,10px);line-height:1.1;color:#6a6a6a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ws-display-stage .ws-display-foot,.ws-display-stage .ws-display[data-density=packed] .ws-display-foot{flex:none;display:flex;justify-content:space-between;margin:8px 0 0;font-size:clamp(11px,.8vw,14px);color:#555}
+.ws-display-stage .ws-screen-credit{font-weight:700;color:var(--company-accent,#ef473d)}
+@media(max-width:700px),(orientation:portrait){body:has(.ws-display-stage){overflow:auto}.ws-display-stage{height:auto;min-height:100dvh}.ws-display-stage .ws-display{height:auto;min-height:calc(100dvh - 24px);overflow:visible}.ws-display-stage .ws-display-head{min-height:60px}.ws-display-stage .ws-results,.ws-display-stage .ws-results.many-options{grid-template-columns:1fr;grid-template-rows:auto;flex:none;overflow:visible}.ws-display-stage .ws-results article{min-height:240px;border-right:0;border-bottom:2px dashed #aaa;overflow:visible}.ws-display-stage .ws-results article:last-child{border-bottom:0}.ws-display-stage .ws-people{min-height:160px;overflow:visible}.ws-display-stage .ws-screen-join>span{display:none}}

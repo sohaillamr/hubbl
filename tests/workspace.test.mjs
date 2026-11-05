@@ -5,13 +5,13 @@ import { JSDOM } from 'jsdom';
 
 const source=readFileSync(new URL('../workspace.js',import.meta.url),'utf8').replace(/^import .*;\r?\n/gm,'').replace('injectSpeedInsights();','');
 const tick=()=>new Promise(resolve=>setTimeout(resolve,0));
-function app(view='admin',id=''){
+function app(view='admin',id='',session={}){
   const dom=new JSDOM('<div id="app"></div>',{url:`https://huddl.test/workspace?org=demo&view=${view}${id?`&id=${id}`:''}`,runScripts:'outside-only'});
   const w=dom.window,calls=[];
   const org={id:'org-1',slug:'demo',name:'Cairo Team',accent_color:'#244f9b',logo_data:null};
   const screen={id:'screen-1',name:'Kitchen',location:'Floor 2',token:'token-1',is_active:true};
   w.fetch=async(url,options={})=>{calls.push({url,options});let data={ok:true};
-    if(url==='/api/me')data={id:'member-1',org:org.id,role:'owner',name:'Nour',platform:view==='platform'};
+    if(url==='/api/me')data={id:'member-1',org:session.org||org.id,role:'owner',name:'Nour',platform:session.platform??view==='platform'};
     if(url.endsWith('/metrics'))data={members:3,polls:[]};
     if(url.endsWith('/polls'))data={polls:[]};
     if(url.endsWith('/members'))data={members:[]};
@@ -149,6 +149,10 @@ test('company directory opens teammate profiles with shared votes and match scor
   assert.equal(directory.w.document.querySelectorAll('.people-card').length,2);
   assert.match(directory.w.document.querySelector('.people-card[href*="member-2"]').textContent,/Salma/);
   directory.w.close();
+  const platformHr=app('people','',{org:'platform-org',platform:true});await tick();await tick();await tick();
+  assert.equal(platformHr.w.document.querySelectorAll('.people-card').length,2);
+  assert.equal(platformHr.w.document.querySelector('.ws-error'),null);
+  platformHr.w.close();
   const teammate=app('profile','member-2');await tick();await tick();await tick();
   assert.match(teammate.w.document.querySelector('.profile-hero').textContent,/Salma/);
   assert.match(teammate.w.document.querySelector('.match-panel').textContent,/6.*10 match/);
@@ -173,6 +177,7 @@ test('office screen refreshes votes without rebuilding cards or QR code',async()
   assert.equal(w.document.querySelector('.ws-header'),null);
   option.votes=2;poll.total=2;poll.people=[{vote_id:'vote-1',option_id:'option-1',display_name:'Salma',department:'Design',job_title:'Designer',photo_data:null}];
   await timers.shift()();
+  assert.equal(card.querySelector('.ws-people').style.getPropertyValue('--note-size'),'132px');
   assert.equal(w.document.querySelector('.ws-display'),display);
   assert.equal(w.document.querySelector('.ws-results article'),card);
   assert.equal(w.document.querySelector('#ws-qr'),qr);
@@ -186,8 +191,10 @@ test('office screen refreshes votes without rebuilding cards or QR code',async()
   poll.people=Array.from({length:50},(_,i)=>({vote_id:`vote-${i+1}`,option_id:'option-1',display_name:`Person ${i+1}`,department:'Design',job_title:'Designer',photo_data:null}));
   await timers.shift()();
   assert.equal(card.querySelectorAll('.ws-note').length,50);
-  assert.ok(card.querySelector('.ws-people').style.gridTemplateColumns);
+  assert.ok(card.querySelector('.ws-people').style.getPropertyValue('--note-size'));
   assert.ok(card.querySelector('.ws-note-photo'));
+  assert.ok(w.document.querySelector('.ws-total-bar'));
+  assert.equal(w.document.querySelector('.ws-meter'),null);
   assert.equal(w.document.querySelector('.ws-display'),display);
   disconnected=true;await timers.shift()();
   assert.equal(w.document.querySelector('.ws-display'),display);

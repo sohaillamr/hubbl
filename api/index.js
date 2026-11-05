@@ -117,7 +117,6 @@ export default async function handler(req,res){
         const b=body(req);await syncScheduledPolls(org.id);const poll=await activePoll(org.id);if(!poll||poll.id!==b.poll_id)throw fail(409,'Question is no longer live');const option=(await query('select id from poll_options where poll_id=$1 and id=$2',[poll.id,b.option_id])).rows[0];if(!option)throw fail(400,'Invalid choice');const shared=poll.mode==='social'&&b.show_identity===true;const photo=shared&&typeof b.photo_data==='string'?b.photo_data:null;if(photo&&(photo.length>120000||!/^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(photo)))throw fail(400,'Photo is too large or invalid');const result=await query('insert into votes(organization_id,poll_id,option_id,member_id,show_identity,photo_data) values($1,$2,$3,$4,$5,$6) on conflict(poll_id,member_id) do nothing returning id',[org.id,poll.id,option.id,user.sub,shared,photo]);if(!result.rows[0])throw fail(409,'You already voted');return json(res,201,{ok:true})
       }
       if(route==='profiles'){
-        if(user.org!==org.id)throw fail(403,'Profiles are only visible inside your company');
         if(path[3]==='me'&&method==='PATCH'){
           const b=body(req),name=clean(b.name,80),department=clean(b.department,80),jobTitle=clean(b.job_title,80),photo=b.photo_data;
           if(!name||!department||typeof b.name!=='string'||b.name.length>80||typeof b.department!=='string'||b.department.length>80||typeof b.job_title!=='string'||b.job_title.length>80)throw fail(400,'Add your name and department');

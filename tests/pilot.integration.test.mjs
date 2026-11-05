@@ -104,7 +104,9 @@ test('company plans, HR access, employee seats, screens, and photo cleanup', { s
     assert.equal(directory.statusCode,200);
     assert.equal(directory.body.profiles.length,1);
     assert.equal(directory.body.profiles[0].id,employeeId);
-    assert.equal((await call('GET',`/org/${childSlug}/profiles/${employeeId}`,null,cookie)).statusCode,403);
+    assert.equal((await call('GET',`/org/${childSlug}/profiles/${employeeId}`,null,cookie)).statusCode,200);
+    assert.equal((await call('GET',`/org/${childSlug}/profiles`,null,hrCookie)).statusCode,200);
+    assert.equal((await call('GET',`/org/${slug}/profiles/${memberId}`,null,firstLogin.headers['Set-Cookie'])).statusCode,403);
     const profilePhoto='data:image/jpeg;base64,/9j/2Q==';
     const edited=await call('PATCH',`/org/${childSlug}/profiles/me`,{name:'Salma Hassan',department:'Design',job_title:'Product Designer',photo_data:profilePhoto},employeeCookie);
     assert.equal(edited.statusCode,200);
