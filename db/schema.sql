@@ -38,6 +38,17 @@ create table if not exists login_codes (
 );
 create index if not exists login_codes_lookup on login_codes (organization_id,email,created_at desc);
 
+create table if not exists admin_invites (
+  id uuid primary key default gen_random_uuid(),
+  organization_id uuid not null references organizations(id) on delete cascade,
+  member_id uuid not null references members(id) on delete cascade,
+  token_hash text not null unique,
+  expires_at timestamptz not null,
+  used_at timestamptz,
+  created_at timestamptz not null default now()
+);
+create index if not exists admin_invites_member on admin_invites (member_id,created_at desc);
+
 create table if not exists polls (
   id uuid primary key default gen_random_uuid(),
   organization_id uuid not null references organizations(id) on delete cascade,
@@ -76,6 +87,43 @@ create table if not exists votes (
 );
 create index if not exists votes_poll_option on votes (poll_id,option_id);
 create index if not exists votes_org_created on votes (organization_id,created_at desc);
+alter table votes add column if not exists photo_data text;
+
+create table if not exists display_screens (
+  id uuid primary key default gen_random_uuid(),
+  organization_id uuid not null references organizations(id) on delete cascade,
+  name text not null,
+  location text not null default '',
+  token uuid not null unique default gen_random_uuid(),
+  is_active boolean not null default true,
+  created_at timestamptz not null default now()
+);
+create index if not exists display_screens_org on display_screens (organization_id,created_at);
+insert into display_screens(organization_id,name)
+select o.id,'Main office screen' from organizations o
+where not exists (select 1 from display_screens s where s.organization_id=o.id);
+
+create or replace function purge_huddl_photos() returns trigger language plpgsql as $$
+begin
+  if old.status = 'live' and new.status <> 'live' then
+    update votes set photo_data = null where poll_id = new.id and photo_data is not null;
+  end if;
+  return new;
+end $$;
+drop trigger if exists purge_huddl_photos_on_close on polls;
+create trigger purge_huddl_photos_on_close after update of status on polls
+  for each row execute function purge_huddl_photos();
+
+create or replace function purge_huddl_photos_on_pause() returns trigger language plpgsql as $$
+begin
+  if new.is_active = false and old.is_active = true then
+    update votes set photo_data = null where organization_id = new.id and photo_data is not null;
+  end if;
+  return new;
+end $$;
+drop trigger if exists purge_huddl_photos_on_pause_trigger on organizations;
+create trigger purge_huddl_photos_on_pause_trigger after update of is_active on organizations
+  for each row execute function purge_huddl_photos_on_pause();
 
 create table if not exists audit_events (
   id bigserial primary key,
@@ -93,8 +141,10 @@ create index if not exists audit_org_created on audit_events (organization_id,cr
 alter table organizations enable row level security;
 alter table members enable row level security;
 alter table login_codes enable row level security;
+alter table admin_invites enable row level security;
 alter table polls enable row level security;
 alter table poll_options enable row level security;
 alter table votes enable row level security;
 alter table audit_events enable row level security;
-revoke all on organizations,members,login_codes,polls,poll_options,votes,audit_events from anon,authenticated;
+alter table display_screens enable row level security;
+revoke all on organizations,members,login_codes,admin_invites,polls,poll_options,votes,audit_events,display_screens from anon,authenticated;
