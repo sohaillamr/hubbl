@@ -175,13 +175,15 @@ test('office screen refreshes votes without rebuilding cards or QR code',async()
   const display=w.document.querySelector('.ws-display'),card=w.document.querySelector('.ws-results article'),qr=w.document.querySelector('#ws-qr');
   assert.ok(display&&card&&qr);
   assert.equal(w.document.querySelector('.ws-header'),null);
+  assert.equal(w.document.querySelector('.ws-vote-word').textContent,'vote');
   option.votes=2;poll.total=2;poll.people=[{vote_id:'vote-1',option_id:'option-1',display_name:'Salma',department:'Design',job_title:'Designer',photo_data:null}];
   await timers.shift()();
-  assert.equal(card.querySelector('.ws-people').style.getPropertyValue('--note-size'),'132px');
+  assert.equal(card.querySelector('.ws-people').style.getPropertyValue('--note-size'),'164px');
   assert.equal(w.document.querySelector('.ws-display'),display);
   assert.equal(w.document.querySelector('.ws-results article'),card);
   assert.equal(w.document.querySelector('#ws-qr'),qr);
   assert.equal(w.document.querySelector('.ws-display-foot b').textContent,'2');
+  assert.equal(w.document.querySelector('.ws-vote-word').textContent,'votes');
   assert.match(card.querySelector('.ws-people').textContent,/Salma/);
   assert.equal(qrCalls,1);
   const firstPerson=card.querySelector('.ws-note');
@@ -193,8 +195,9 @@ test('office screen refreshes votes without rebuilding cards or QR code',async()
   assert.equal(card.querySelectorAll('.ws-note').length,50);
   assert.ok(card.querySelector('.ws-people').style.getPropertyValue('--note-size'));
   assert.ok(card.querySelector('.ws-note-photo'));
-  assert.ok(w.document.querySelector('.ws-total-bar'));
-  assert.equal(w.document.querySelector('.ws-meter'),null);
+  assert.ok(w.document.querySelector('.live-pill'));
+  assert.ok(w.document.querySelector('.ws-meter'));
+  assert.equal(w.document.querySelector('.ws-total-bar'),null);
   assert.equal(w.document.querySelector('.ws-display'),display);
   disconnected=true;await timers.shift()();
   assert.equal(w.document.querySelector('.ws-display'),display);

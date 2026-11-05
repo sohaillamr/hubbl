@@ -36,7 +36,7 @@ async function showDisplay(){
   clearTimeout(refreshTimer);
   const screen=params.get('screen');
   let renderedKey='';
-  const layoutNotes=()=>{for(const card of root.querySelectorAll('.ws-results article')){const list=card.querySelector('.ws-people'),count=list.children.length;if(!count)continue;let size=108;if(window.innerWidth>=700&&window.innerHeight<=window.innerWidth){const width=Math.max(80,(list.clientWidth||800)-18),height=Math.max(80,(list.clientHeight||520)-18),gap=9;size=132;for(;size>56;size-=2){const columns=Math.max(1,Math.floor((width+gap)/(size+gap))),rows=Math.max(1,Math.floor((height+gap)/(size*1.24+gap)));if(columns*rows>=count)break}}list.style.setProperty('--note-size',`${size}px`);list.style.setProperty('--note-height',`${Math.round(size*1.24)}px`);list.style.setProperty('--photo-height',`${Math.round(size*.78)}px`);list.style.setProperty('--note-font',size<86?'10px':'13px');list.style.setProperty('--note-small',size<86?'8px':'10px')}};
+  const layoutNotes=()=>{for(const card of root.querySelectorAll('.ws-results article')){const list=card.querySelector('.ws-people'),count=list.children.length;if(!count)continue;let size=108;if(window.innerWidth>=700&&window.innerHeight<=window.innerWidth){const width=Math.max(80,(list.clientWidth||800)-18),height=Math.max(80,(list.clientHeight||520)-18),gap=9;size=164;for(;size>56;size-=2){const columns=Math.max(1,Math.floor((width+gap)/(size+gap))),rows=Math.max(1,Math.floor((height+gap)/(size*1.24+gap)));if(columns*rows>=count)break}}list.style.setProperty('--note-size',`${size}px`);list.style.setProperty('--note-height',`${Math.round(size*1.24)}px`);list.style.setProperty('--photo-height',`${Math.round(size*.78)}px`);list.style.setProperty('--note-font',size<86?'10px':'14px');list.style.setProperty('--note-small',size<86?'8px':'11px')}};
   window.addEventListener('resize',layoutNotes);
   async function refresh(){
     try{
@@ -45,22 +45,20 @@ async function showDisplay(){
       const options=poll?.options||[];
       const key=JSON.stringify([org.id,org.name,org.logo_data,poll?.id,poll?.question,poll?.mode,options.map(o=>[o.id,o.label])]);
       if(key!==renderedKey){
-        root.innerHTML=`<main class="ws-display-stage"><div class="ws-display"><div class="ws-display-head"><div>${org.logo_data?`<img src="${esc(org.logo_data)}" alt="">`:''}<strong>${esc(org.name)}</strong><span>× huddl</span></div>${poll?`<div class="ws-screen-join"><span>Scan to vote →</span><div id="ws-qr"></div></div>`:'<span class="live-pill"><i></i>NO LIVE QUESTION</span>'}</div>${poll?`<h1 dir="auto">${esc(poll.question)}</h1><div class="ws-total-bar" aria-label="Live vote results">${options.map((o,i)=>`<div class="ws-total-segment" style="--segment-color:${['#ffe438','#f7b6b8','#afe3d2','#b7d6f7','#d9bef4','#f6cca9','#bce3e7','#dfe7af'][i]}"><span dir="auto">${esc(o.label)}</span><b dir="ltr">0%</b></div>`).join('')}</div><div class="ws-results${options.length>4?' many-options':''}" style="--option-columns:${options.length>6?4:options.length>4?3:options.length}">${options.map((o,i)=>`<article style="--segment-color:${['#ffe438','#f7b6b8','#afe3d2','#b7d6f7','#d9bef4','#f6cca9','#bce3e7','#dfe7af'][i]}"><div class="ws-result-title"><strong dir="auto">${esc(o.label)}</strong><small>0 votes</small></div><div class="ws-people"></div></article>`).join('')}</div><div class="ws-display-foot"><span><b>0</b> votes so far</span><span class="ws-screen-credit">Powered by huddl.</span></div>`:'<div class="ws-empty">The next question will appear here when HR publishes it.</div>'}</div></main>`;
+        root.innerHTML=`<main class="ws-display-stage"><div class="ws-display"><div class="ws-display-head"><div>${org.logo_data?`<img src="${esc(org.logo_data)}" alt="">`:''}<strong>${esc(org.name)}</strong><span>× huddl</span></div><span class="live-pill"><i></i>${poll?'LIVE TODAY':'NO LIVE QUESTION'}</span></div>${poll?`<span class="eyebrow">TODAY'S HUDDL</span><h1 dir="auto">${esc(poll.question)}</h1><div class="ws-results${options.length>4?' many-options':''}" style="--option-columns:${options.length>6?4:3}">${options.map(o=>`<article><div class="ws-result-title"><strong dir="auto">${esc(o.label)}</strong><b>0%</b></div><div class="ws-meter"><i style="width:0%"></i></div><div class="ws-people"></div></article>`).join('')}</div><div class="ws-display-foot"><span><b>0</b> <span class="ws-vote-word">votes</span> so far</span><div><span>Scan to vote →</span><div id="ws-qr"></div></div></div>`:'<div class="ws-empty">The next question will appear here when HR publishes it.</div>'}</div></main>`;
         if(poll)root.querySelector('#ws-qr').innerHTML=await QRCode.toString(new URL(link('vote'),location.origin).href,{type:'svg',width:110,margin:0});
         renderedKey=key;
       }
       if(poll){
         const total=poll.total||0;
         root.querySelector('.ws-display').dataset.density=poll.people.length>35?'packed':poll.people.length>12?'medium':'relaxed';
-        const cards=root.querySelectorAll('.ws-results article'),segments=root.querySelectorAll('.ws-total-segment');
-        const board=root.querySelector('.ws-results');if(options.length===2&&poll.people.length>24){const first=poll.people.filter(p=>p.option_id===options[0].id).length/poll.people.length,share=Math.max(15,Math.min(85,Math.round(first*100)));board.style.gridTemplateColumns=`${share}% ${100-share}%`}else board.style.gridTemplateColumns='';
+        const cards=root.querySelectorAll('.ws-results article');const weights=options.map(o=>Math.max(1,Math.sqrt(poll.people.filter(p=>p.option_id===o.id).length)));cards.forEach((card,index)=>card.style.flexGrow=weights[index]);
         root.querySelector('.ws-display-foot b').textContent=total;
+        root.querySelector('.ws-vote-word').textContent=total===1?'vote':'votes';
         cards.forEach((card,index)=>{
           const option=options[index],percent=total?option.votes/total*100:0;
-          card.querySelector('.ws-result-title small').textContent=`${option.votes} vote${option.votes===1?'':'s'}`;
-          segments[index].style.flexGrow=total?option.votes:1;
-          segments[index].style.display=total&&!option.votes?'none':'';
-          segments[index].querySelector('b').textContent=`${Math.round(percent)}%`;
+          card.querySelector('.ws-result-title b').textContent=`${Math.round(percent)}%`;
+          card.querySelector('.ws-meter i').style.width=`${percent}%`;
           const people=poll.people.filter(p=>p.option_id===option.id);
           const list=card.querySelector('.ws-people');
           const existing=new Map([...list.children].map(node=>[node.dataset.voteId,node]));
