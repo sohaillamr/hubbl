@@ -37,6 +37,9 @@ test('HR portal shows company theme, screen controls, and a save toast',async()=
   assert.ok(w.document.querySelector('#change-email-request'));
   assert.equal(w.document.querySelector('#send-portal'),null);
   assert.equal(w.document.querySelector('#screen-choice').value,'token-1');
+  assert.ok(w.document.querySelector('.screen-panel .ws-screen-picker'));
+  assert.equal(w.document.querySelector('.ws-admin > .ws-screen-picker'),null);
+  const dashboard=w.document.querySelector('.ws-admin'),studio=w.document.querySelector('#create-poll'),picker=w.document.querySelector('#screen-choice');
   let opened='';w.open=url=>{opened=url};w.document.querySelector('#open-selected-screen').click();
   assert.match(opened,/screen=token-1/);
   assert.ok(w.document.querySelector('#context-form'));
@@ -47,11 +50,16 @@ test('HR portal shows company theme, screen controls, and a save toast',async()=
   access.dispatchEvent(new w.SubmitEvent('submit',{bubbles:true,cancelable:true,submitter:access.querySelector('button')}));
   await tick();await tick();
   assert.deepEqual(JSON.parse(calls.find(x=>x.url==='/api/org/demo/access'&&x.options.method==='POST').options.body).emails,['salma@company.com','omar@company.com']);
+  assert.equal(w.document.querySelector('.ws-admin'),dashboard);
+  assert.equal(w.document.querySelector('#create-poll'),studio);
+  assert.equal(w.document.querySelector('#screen-choice'),picker);
   const form=w.document.querySelector('#brand-form');
   form.dispatchEvent(new w.SubmitEvent('submit',{bubbles:true,cancelable:true,submitter:form.querySelector('button')}));
   await tick();await tick();
   assert.ok(calls.some(x=>x.url==='/api/org/demo/branding'&&x.options.method==='PATCH'));
   assert.match(w.document.querySelector('#huddl-toast').textContent,/Brand saved/);
+  assert.equal(w.document.querySelector('.ws-admin'),dashboard);
+  assert.equal(w.document.querySelector('#create-poll'),studio);
   const context=w.document.querySelector('#context-form');
   context.querySelector('[name=description]').value='Cairo design studio';
   context.dispatchEvent(new w.SubmitEvent('submit',{bubbles:true,cancelable:true,submitter:context.querySelector('button')}));
@@ -70,6 +78,8 @@ test('HR portal shows company theme, screen controls, and a save toast',async()=
   const scheduledCall=calls.find(x=>x.url==='/api/org/demo/polls'&&x.options.method==='POST');
   assert.ok(scheduledCall);
   assert.ok(JSON.parse(scheduledCall.options.body).opens_at);
+  assert.equal(w.document.querySelector('.ws-admin'),dashboard);
+  assert.equal(w.document.querySelector('#create-poll'),studio);
   w.close();
 });
 
@@ -118,6 +128,11 @@ test('Huddl owner generates company HR access and sees screen links',async()=>{
   assert.match(w.document.querySelector('#huddl-toast').textContent,/Huddl test inbox/);
   assert.equal(w.document.querySelector('.platform-org [name=seat_limit]').value,'100');
   assert.equal(w.document.querySelector('.platform-org [name=screen_limit]').value,'2');
+  const platform=w.document.querySelector('.ws-admin'),company=w.document.querySelector('.platform-org');
+  company.dispatchEvent(new w.SubmitEvent('submit',{bubbles:true,cancelable:true,submitter:company.querySelector('button.button.outline')}));
+  await tick();await tick();
+  assert.equal(w.document.querySelector('.ws-admin'),platform);
+  assert.equal(w.document.querySelector('.platform-org'),company);
   const create=w.document.querySelector('#create-company');
   create.querySelector('[name=name]').value='New Company';create.querySelector('[name=slug]').value='new-company';create.querySelector('[name=admin_name]').value='HR';create.querySelector('[name=email]').value='hr@example.com';
   create.dispatchEvent(new w.SubmitEvent('submit',{bubbles:true,cancelable:true,submitter:create.querySelector('button')}));
