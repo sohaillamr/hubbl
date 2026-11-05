@@ -12,7 +12,7 @@ HR can also create questions with 2–8 choices, publish or close them, manage s
 
 Social votes can include a fresh camera photo when the employee opts to appear on the office screen. Photos are stored on the vote only while its question is live; a database trigger deletes them when HR closes or replaces the question or pauses the company. Anonymous votes store no photo.
 
-Each company has named display screens with a separate link. Deactivating a screen invalidates its link. Creating a company generates a temporary HR password, emails it with the HR portal link, and shows it to the Huddl owner once. HR must replace it on first login; it expires after seven days. The owner can send a one-time password setup link if HR loses access. HR can later change its password or verify a new login email. Changing credentials revokes older sessions.
+Each company has named display screens with a separate link. Deactivating a screen invalidates its link. Only the Huddl platform admin creates companies and generates their HR dashboard links. Creating a company generates a temporary HR password, emails it with the HR portal link, and shows it to the Huddl admin once. HR must replace it on first login; it expires after seven days. The Huddl admin can copy the HR link or generate a one-time password setup link if HR loses access. HR can later change its password or verify a new login email. Changing credentials revokes older sessions.
 
 For an existing owner who needs a first invitation before signing in, set `OWNER_EMAIL` with the database and email environment variables, then run `node scripts/invite-owner.mjs`.
 

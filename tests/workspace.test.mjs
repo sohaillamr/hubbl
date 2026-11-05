@@ -18,7 +18,8 @@ function app(view='admin'){
     if(url.endsWith('/display'))data={organization:org,poll:null};
     if(url.endsWith('/screens'))data={screens:[screen],screen_limit:2,active:1};
     if(url.endsWith('/access'))data=options.method==='POST'?{added:2,assigned:2,seat_limit:100}:{seat_limit:100,assigned:0,enforce_allowlist:true,access:[]};
-    if(url==='/api/platform/overview')data={totals:{companies:1,members:3,votes:5},organizations:[{...org,members:3,polls:1,votes:5,screens:1,screen_limit:2,seat_limit:100,seats_used:0,is_active:true,display_screens:[screen]}]};
+    if(url==='/api/platform/overview')data={totals:{companies:1,members:3,votes:5},email_test_mode:true,organizations:[{...org,owner_email:'hr@demo.test',hr_link:'https://huddl.test/workspace?org=demo&view=admin',members:3,polls:1,votes:5,screens:1,screen_limit:2,seat_limit:100,seats_used:0,is_active:true,display_screens:[screen]}]};
+    if(url==='/api/platform/organizations/org-1/send-portal')data={sent:true,email:'hr@demo.test',one_time_link:'https://huddl.test/workspace?org=demo&view=admin&invite=secret'};
     if(url==='/api/platform/organizations'&&options.method==='POST')data={slug:'new-company',email_sent:false,temporary_password:'temporary-secret-123',hr_email:'hr@example.com',hr_link:'https://huddl.test/workspace?org=new-company&view=admin'};
     return {ok:true,json:async()=>data};
   };
@@ -32,6 +33,7 @@ test('HR portal shows company theme, screen controls, and a save toast',async()=
   assert.equal(w.document.querySelector('.ws-screen-list [name=name]').value,'Kitchen');
   assert.match(w.document.querySelector('.ws-screen-list .ws-screen-actions a').href,/screen=token-1/);
   assert.ok(w.document.querySelector('#change-email-request'));
+  assert.equal(w.document.querySelector('#send-portal'),null);
   const access=w.document.querySelector('#access-import');
   access.querySelector('textarea').value='salma@company.com\nomar@company.com';
   access.dispatchEvent(new w.SubmitEvent('submit',{bubbles:true,cancelable:true,submitter:access.querySelector('button')}));
@@ -45,12 +47,16 @@ test('HR portal shows company theme, screen controls, and a save toast',async()=
   w.close();
 });
 
-test('Huddl owner sees company screen count and portal email action',async()=>{
+test('Huddl owner generates company HR access and sees screen links',async()=>{
   const {w,calls}=app('platform');await tick();await tick();
   assert.match(w.document.querySelector('.platform-links').textContent,/1 active screen/);
   assert.match(w.document.querySelector('.platform-links a').href,/screen=token-1/);
+  assert.match(w.document.querySelector('.platform-handoff a').href,/org=demo&view=admin/);
+  assert.ok(w.document.querySelector('.copy-hr-link'));
   w.document.querySelector('.send-company-portal').click();await tick();await tick();
   assert.ok(calls.some(x=>x.url==='/api/platform/organizations/org-1/send-portal'&&x.options.method==='POST'));
+  assert.match(w.document.querySelector('.one-time-access a').href,/invite=secret/);
+  assert.match(w.document.querySelector('#huddl-toast').textContent,/Huddl test inbox/);
   assert.equal(w.document.querySelector('.platform-org [name=seat_limit]').value,'100');
   assert.equal(w.document.querySelector('.platform-org [name=screen_limit]').value,'2');
   const create=w.document.querySelector('#create-company');

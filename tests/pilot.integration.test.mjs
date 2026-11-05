@@ -38,12 +38,14 @@ test('company plans, HR access, employee seats, screens, and photo cleanup', { s
     const overview=await call('GET','/platform/overview',null,cookie);
     assert.equal(overview.statusCode,200);
     assert.equal(overview.body.organizations.find(o=>o.id===orgId).screens,1);
+    assert.match(overview.body.organizations.find(o=>o.id===orgId).hr_link,new RegExp(`org=${slug}&view=admin`));
     assert.equal((await call('GET',`/org/${slug}/display?screen=${screen.token}`)).statusCode,200);
 
     const childSlug=`plan-${randomUUID().slice(0,8)}`;
     const company=await call('POST','/platform/organizations',{slug:childSlug,name:'Plan Test',email:'hr@example.com',admin_name:'HR Manager',seat_limit:2,screen_limit:2},cookie);
     assert.equal(company.statusCode,201);
     childOrgId=company.body.id;
+    assert.match(company.body.hr_link,new RegExp(`org=${childSlug}&view=admin`));
     assert.equal((await db.query('select count(*)::int as n from display_screens where organization_id=$1 and is_active=true',[childOrgId])).rows[0].n,2);
     const login=await call('POST','/auth/admin',{slug:childSlug,email:'hr@example.com',password:company.body.temporary_password});
     assert.equal(login.body.must_change_password,true);
@@ -61,6 +63,9 @@ test('company plans, HR access, employee seats, screens, and photo cleanup', { s
     assert.equal(emailChanged.statusCode,200);
     assert.equal((await call('GET','/me',null,hrCookie)).statusCode,401);
     hrCookie=emailChanged.headers['Set-Cookie'];
+    assert.equal((await call('POST',`/org/${childSlug}/send-portal`,null,hrCookie)).statusCode,404);
+    assert.equal((await call('POST','/auth/admin-email/request',{email:`${slug}@example.com`},hrCookie)).statusCode,403);
+    assert.equal((await call('POST','/auth/admin-email/verify',{email:`${slug}@example.com`,code:'123456'},hrCookie)).statusCode,403);
     assert.equal((await call('POST','/auth/admin',{slug:childSlug,email:'hr-new@example.com',password:'new-hr-password-12345'})).statusCode,200);
     const imported=await call('POST',`/org/${childSlug}/access`,{emails:['salma@example.com','omar@example.com']},hrCookie);
     assert.equal(imported.body.assigned,2);
