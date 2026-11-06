@@ -17,7 +17,14 @@ export async function snapshotDatabase(client){
   const result={version:1,created_at:new Date().toISOString(),schema,schema_sha256:createHash('sha256').update(schema).digest('hex'),tables:{}};
   await client.query('begin isolation level repeatable read read only');
   try{
-    for(const table of tables){const sql=table==='votes'?"select (to_jsonb(t) - 'photo_data') || jsonb_build_object('photo_data',null) as row from public.votes t limit 50001":`select * from public."${table}" limit 50001`;const data=(await client.query(sql)).rows;if(data.length>50000)throw Error(`Backup row limit exceeded for ${table}`);result.tables[table]=table==='votes'?data.map(x=>x.row):data}
+    for(const table of tables){
+      // JSON conversion happens in Postgres so timestamp precision is not lost
+      // through JavaScript Date; preserve the bigint audit ID as text as well.
+      const expression=table==='votes'?"(to_jsonb(t) - 'photo_data') || jsonb_build_object('photo_data',null)":table==='audit_events'?"jsonb_set(to_jsonb(t),'{id}',to_jsonb(t.id::text))":'to_jsonb(t)';
+      const data=(await client.query(`select ${expression} as row from public."${table}" t limit 50001`)).rows;
+      if(data.length>50000)throw Error(`Backup row limit exceeded for ${table}`);
+      result.tables[table]=data.map(x=>x.row);
+    }
     await client.query('commit');return result;
   }catch(e){await client.query('rollback');throw e}
 }
