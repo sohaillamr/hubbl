@@ -35,6 +35,8 @@ export async function restoreForTest(client,snapshot){
       for(let i=0;i<rows.length;i+=100)await client.query(`insert into public."${table}" select * from jsonb_populate_recordset(null::public."${table}",$1::jsonb)`,[JSON.stringify(rows.slice(i,i+100))]);
       const count=(await client.query(`select count(*)::int as n from public."${table}"`)).rows[0].n;
       if(count!==rows.length)throw Error(`Restore count mismatch for ${table}`);
+      const mismatch=(await client.query(`select count(*)::int as n from (select to_jsonb(t) as row from public."${table}" t except all select to_jsonb(s) as row from jsonb_populate_recordset(null::public."${table}",$1::jsonb) s) differences`,[JSON.stringify(rows)])).rows[0].n;
+      if(mismatch)throw Error(`Restored rows do not match backup for ${table}`);
     }
     await client.query("select setval(pg_get_serial_sequence('public.audit_events','id'),greatest(coalesce(max(id),0),1),max(id) is not null) from public.audit_events");
     await client.query('commit');

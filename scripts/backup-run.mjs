@@ -37,7 +37,7 @@ if(operation==='create'){
     await restoreForTest(client,snapshot);
     const photos=(await client.query('select count(*)::int as n from votes where photo_data is not null')).rows[0].n;
     if(photos)throw Error('Temporary vote photos were present in backup');
-    console.log('Restore verification passed for all application tables; temporary vote photos:',photos);
+    console.log('Restore verification passed for all application table counts and values; temporary vote photos:',photos);
   }finally{await client.end()}
 }else if(operation==='prune'){
   const all=[];let cursor;
