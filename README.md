@@ -20,7 +20,7 @@ The office display runs full screen without portal navigation. Each choice has i
 
 Each company has named display screens with a separate link. Deactivating a screen invalidates its link. Only the Huddl platform admin creates companies and generates their HR dashboard links. Creating a company generates a temporary HR password, emails it with the HR portal link, and shows it to the Huddl admin once. HR must replace it on first login; it expires after seven days. The Huddl admin can copy the HR link or generate a one-time password setup link if HR loses access. HR can later change its password or verify a new login email. Changing credentials revokes older sessions.
 
-For an existing owner who needs a first invitation before signing in, set `OWNER_EMAIL` with the database and email environment variables, then run `node scripts/invite-owner.mjs`.
+The platform owner can request a one-time password setup email from the platform sign-in page using the owner email and company slug. The link is valid for seven days and does not change the account password until it is used.
 
 ## Run locally
 

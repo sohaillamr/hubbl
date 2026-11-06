@@ -121,6 +121,7 @@ test('HR can switch language, choose an Egyptian prompt, and preview the calenda
   assert.equal(w.document.documentElement.lang,'ar');
   assert.equal(w.document.documentElement.dir,'rtl');
   assert.match(w.document.querySelector('.ws-header nav').textContent,/الزملاء/);
+  assert.match(w.document.querySelector('#create-poll [name=question]').getAttribute('placeholder'),/بريك/);
   w.document.querySelector('#workspace-language').click();await tick();
   assert.equal(w.document.documentElement.lang,'en');
   assert.match(w.document.querySelector('.ws-header nav').textContent,/People/);
