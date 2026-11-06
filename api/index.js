@@ -73,6 +73,14 @@ export default async function handler(req,res){
     if(path[0]==='auth'&&path[1]==='admin'&&method==='POST'){
       const b=body(req),org=await organization(clean(b.slug,40)),email=clean(b.email,255).toLowerCase();await authRate(req,'admin',`${org.id}:${email}`);const {rows}=await query('select * from members where organization_id=$1 and lower(email)=lower($2) and role in (\'owner\',\'admin\')',[org.id,email]);if(!rows[0]||!compare(b.password||'',rows[0].password_hash))throw fail(401,'Invalid credentials');if(rows[0].must_change_password&&rows[0].credential_expires_at&&new Date(rows[0].credential_expires_at)<new Date())throw fail(410,'Temporary password expired. Request a new HR link.');await session(res,rows[0]);return json(res,200,{name:rows[0].display_name,role:rows[0].role,organization:org.slug,must_change_password:rows[0].must_change_password})
     }
+    if(path[0]==='auth'&&path[1]==='admin-reset'&&method==='POST'){
+      const b=body(req),slug=clean(b.slug,40).toLowerCase(),email=clean(b.email,255).toLowerCase();
+      if(!validEmail(email))throw fail(400,'Enter a valid email address');
+      await authRate(req,'admin-reset',slug+':'+email);await rateLimit('admin-reset:mail',slug+':'+email,3);
+      const org=(await query('select * from organizations where slug=$1 and is_active=true',[slug])).rows[0];
+      if(org&&!emailTestMode()){const owner=(await query("select id,email from members where organization_id=$1 and lower(email)=$2 and role in ('owner','admin')",[org.id,email])).rows[0];if(owner){try{await sendPortal(owner,org)}catch(e){console.error('Admin recovery email failed',e.code||'delivery_failed')}}}
+      return json(res,200,{sent:true});
+    }
     if(path[0]==='auth'&&path[1]==='request'&&method==='POST'){
       const b=body(req),org=await organization(clean(b.slug,40)),email=clean(b.email,255).toLowerCase();
       await authRate(req,'request',org.id+':'+email);

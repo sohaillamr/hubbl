@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import { JSDOM } from 'jsdom';
 
 const source = readFileSync(new URL('../src.js', import.meta.url), 'utf8');
+const workspaceSource=readFileSync(new URL('../workspace.js',import.meta.url),'utf8').replace(/^import .*;\r?\n/gm,'').replace('injectSpeedInsights();','');
 function app(route = '/admin') {
   const dom = new JSDOM('<div id="app"></div>', { url: `http://localhost/#${route}`, runScripts: 'outside-only' });
   const { window } = dom;
@@ -20,6 +21,19 @@ test('landing ticker has identical long halves for a seamless loop',()=>{
   assert.equal(groups[0].textContent,groups[1].textContent);
   assert.ok(groups[0].textContent.match(/KOSHARY/g).length>=4);
   w.close();
+});
+
+test('Arabic switch translates the public navigation and demo HR has no landing navbar',async()=>{
+  const w=app('/');w.eval(workspaceSource);
+  w.document.querySelector('#workspace-language').click();
+  assert.equal(w.document.documentElement.lang,'ar');
+  assert.match(w.document.querySelector('.topbar nav').textContent,/جرّب هادل/);
+  await new Promise(resolve=>setTimeout(resolve,0));
+  w.close();
+  const hr=app('/admin');
+  assert.equal(hr.document.querySelector('.topbar nav'),null);
+  assert.match(hr.document.querySelector('.topbar .brand').getAttribute('href'),/#\/admin/);
+  hr.close();
 });
 
 test('HR can add and remove choices within 2–8 limit', () => {

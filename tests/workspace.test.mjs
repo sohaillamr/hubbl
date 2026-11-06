@@ -40,6 +40,8 @@ test('HR portal shows company theme, screen controls, and a save toast',async()=
   assert.ok(w.document.querySelector('#change-email-request'));
   assert.equal(w.document.querySelector('#send-portal'),null);
   assert.equal(w.document.querySelector('#screen-choice').value,'token-1');
+  assert.match(w.document.querySelector('.ws-header .brand').href,/view=admin/);
+  assert.equal(w.document.querySelector('.topbar'),null);
   assert.match(w.document.querySelector('.screen-health').textContent,/Not connected yet/);
   w.document.querySelector('#preview-selected-screen').click();
   assert.match(w.document.querySelector('#screen-preview iframe').src,/screen=token-1&preview=1/);
@@ -87,6 +89,19 @@ test('HR portal shows company theme, screen controls, and a save toast',async()=
   assert.ok(JSON.parse(scheduledCall.options.body).opens_at);
   assert.equal(w.document.querySelector('.ws-admin'),dashboard);
   assert.equal(w.document.querySelector('#create-poll'),studio);
+  w.close();
+});
+
+test('platform owner can request a password recovery email',async()=>{
+  const dom=new JSDOM('<div id="app"></div>',{url:'https://huddl.test/workspace?view=platform',runScripts:'outside-only'});
+  const w=dom.window,calls=[];
+  w.fetch=async(url,options={})=>{calls.push({url,options});return url==='/api/me'?{ok:false,json:async()=>({error:'Sign in required'})}:{ok:true,json:async()=>({sent:true})}};
+  w.eval(source);await tick();await tick();
+  const form=w.document.querySelector('#platform-login');form.elements.slug.value='huddl-demo';form.elements.email.value='owner@example.com';
+  form.querySelector('#platform-reset').click();await tick();await tick();
+  const call=calls.find(x=>x.url==='/api/auth/admin-reset');assert.ok(call);
+  assert.deepEqual(JSON.parse(call.options.body),{slug:'huddl-demo',email:'owner@example.com'});
+  assert.match(w.document.querySelector('#reset-notice').textContent,/recovery link/);
   w.close();
 });
 

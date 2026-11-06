@@ -29,6 +29,9 @@ test('company plans, HR access, employee seats, screens, and photo cleanup', { s
     assert.match(accepted.headers['Set-Cookie'],/Max-Age=7776000/);
     cookie=accepted.headers['Set-Cookie'];
     assert.equal((await call('POST','/auth/invite/accept',{token:inviteToken,password:'test-password-12345'})).statusCode,410);
+    const resetUnknown=await call('POST','/auth/admin-reset',{slug,email:'nobody@example.com'});
+    assert.equal(resetUnknown.statusCode,200);
+    assert.deepEqual(resetUnknown.body,{sent:true});
 
     const created=await call('POST',`/org/${slug}/screens`,{name:'Kitchen',location:'Floor 2'},cookie);
     assert.equal(created.statusCode,201);
