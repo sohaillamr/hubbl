@@ -37,6 +37,8 @@ alter table members add column if not exists must_change_password boolean not nu
 alter table members add column if not exists credential_expires_at timestamptz;
 alter table members add column if not exists session_version integer not null default 0;
 alter table members add column if not exists profile_photo_data text;
+alter table members add column if not exists directory_visible boolean not null default true;
+alter table members add column if not exists matching_enabled boolean not null default true;
 
 create table if not exists employee_access (
   id uuid primary key default gen_random_uuid(),
@@ -146,6 +148,7 @@ create table if not exists display_screens (
   created_at timestamptz not null default now()
 );
 create index if not exists display_screens_org on display_screens (organization_id,created_at);
+alter table display_screens add column if not exists last_seen_at timestamptz;
 insert into display_screens(organization_id,name)
 select o.id,'Main office screen' from organizations o
 where not exists (select 1 from display_screens s where s.organization_id=o.id);

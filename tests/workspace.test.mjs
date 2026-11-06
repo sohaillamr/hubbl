@@ -21,6 +21,7 @@ function app(view='admin',id='',session={}){
     if(url.endsWith('/context'))data=options.method==='PATCH'?{ok:true}:{description:'Cairo team',policy_context:'Remote Tuesdays'};
     if(url.includes('/profiles?'))data={profiles:[{id:'member-1',display_name:'Nour',department:'People',job_title:'HR lead',role:'owner',profile_photo_data:null},{id:'member-2',display_name:'Salma',department:'Design',job_title:'Designer',role:'employee',profile_photo_data:null}]};
     if(url.endsWith('/profiles/member-2'))data={profile:{id:'member-2',display_name:'Salma',department:'Design',job_title:'Designer',role:'employee',profile_photo_data:null},own:false,history:[{poll_id:'poll-1',question:'Koshary for lunch?',choice:'Yes',mode:'social',show_identity:true,created_at:'2026-11-06T10:00:00Z'}],match:{shared:2,matching:1,score:6}};
+    if(url.endsWith('/profiles/member-1'))data=options.method==='PATCH'?{profile:{id:'member-1',display_name:'Nour',department:'People',job_title:'HR lead',profile_photo_data:null}}:{profile:{id:'member-1',display_name:'Nour',department:'People',job_title:'HR lead',role:'owner',profile_photo_data:null,directory_visible:true,matching_enabled:true},own:true,history:[],match:null};
     if(url.endsWith('/ai/questions'))data={questions:[{question:'Which Cairo lunch wins?',options:['Koshary','Hawawshi'],mode:'social',rationale:'A fun lunch vote.'}]};
     if(url==='/api/platform/overview')data={totals:{companies:1,members:3,votes:5},email_test_mode:true,organizations:[{...org,owner_email:'hr@demo.test',hr_link:'https://huddl.test/workspace?org=demo&view=admin',members:3,polls:1,votes:5,screens:1,screen_limit:2,seat_limit:100,seats_used:0,is_active:true,display_screens:[screen]}]};
     if(url==='/api/platform/organizations/org-1/send-portal')data={sent:true,email:'hr@demo.test',one_time_link:'https://huddl.test/workspace?org=demo&view=admin&invite=secret'};
@@ -39,6 +40,9 @@ test('HR portal shows company theme, screen controls, and a save toast',async()=
   assert.ok(w.document.querySelector('#change-email-request'));
   assert.equal(w.document.querySelector('#send-portal'),null);
   assert.equal(w.document.querySelector('#screen-choice').value,'token-1');
+  assert.match(w.document.querySelector('.screen-health').textContent,/Not connected yet/);
+  w.document.querySelector('#preview-selected-screen').click();
+  assert.match(w.document.querySelector('#screen-preview iframe').src,/screen=token-1&preview=1/);
   assert.ok(w.document.querySelector('.screen-panel .ws-screen-picker'));
   assert.equal(w.document.querySelector('.ws-admin > .ws-screen-picker'),null);
   const dashboard=w.document.querySelector('.ws-admin'),studio=w.document.querySelector('#create-poll'),picker=w.document.querySelector('#screen-choice');
@@ -83,6 +87,42 @@ test('HR portal shows company theme, screen controls, and a save toast',async()=
   assert.ok(JSON.parse(scheduledCall.options.body).opens_at);
   assert.equal(w.document.querySelector('.ws-admin'),dashboard);
   assert.equal(w.document.querySelector('#create-poll'),studio);
+  w.close();
+});
+
+test('HR can switch language, choose an Egyptian prompt, and preview the calendar',async()=>{
+  const scheduled={id:'poll-1',question:'Lunch together?',options:[{label:'Yes'},{label:'No'}],status:'draft',opens_at:new Date().toISOString(),closes_at:new Date(Date.now()+3600000).toISOString()};
+  const {w}=app('admin','',{polls:[scheduled]});await tick();await tick();
+  assert.ok(w.document.querySelector('.pilot-checklist'));
+  assert.ok(w.document.querySelector('.pilot-analytics'));
+  assert.ok(w.document.querySelector('#calendar-grid [data-day]'));
+  w.document.querySelector('#calendar-grid [data-day]').click();
+  assert.ok(w.document.querySelector('#calendar-events strong'));
+  w.document.querySelector('#library-language').value='ar';
+  w.document.querySelector('#library-language').dispatchEvent(new w.Event('change'));
+  w.document.querySelector('[data-library="0"]').click();
+  assert.match(w.document.querySelector('#create-poll [name=question]').value,/صباحك/);
+  w.document.querySelector('#workspace-language').click();await tick();
+  assert.equal(w.document.documentElement.lang,'ar');
+  assert.equal(w.document.documentElement.dir,'rtl');
+  assert.match(w.document.querySelector('.ws-header nav').textContent,/الزملاء/);
+  w.document.querySelector('#workspace-language').click();await tick();
+  assert.equal(w.document.documentElement.lang,'en');
+  assert.match(w.document.querySelector('.ws-header nav').textContent,/People/);
+  w.close();
+});
+
+test('profile owner can save directory and matching preferences',async()=>{
+  const {w,calls}=app('profile','member-1');await tick();await tick();
+  const form=w.document.querySelector('#profile-edit-form');
+  assert.ok(form);
+  form.querySelector('[name=directory_visible]').checked=false;
+  form.querySelector('[name=matching_enabled]').checked=false;
+  form.dispatchEvent(new w.SubmitEvent('submit',{bubbles:true,cancelable:true,submitter:form.querySelector('button')}));
+  await tick();await tick();
+  const payload=JSON.parse(calls.find(x=>x.url==='/api/org/demo/profiles/me'&&x.options.method==='PATCH').options.body);
+  assert.equal(payload.directory_visible,false);
+  assert.equal(payload.matching_enabled,false);
   w.close();
 });
 
@@ -145,6 +185,17 @@ test('employee verifies their email before creating a profile',async()=>{
   assert.match(w.document.querySelector('.ws-auth h1').textContent,/No question yet/);
   assert.equal(calls.filter(x=>x.url==='/api/auth/join').length,2);
   assert.equal(calls.filter(x=>x.url==='/api/auth/request').length,1);
+  w.close();
+});
+
+test('employee can retry after a connection failure',async()=>{
+  const dom=new JSDOM('<div id="app"></div>',{url:'https://huddl.test/workspace?org=demo&view=vote',runScripts:'outside-only'});
+  const w=dom.window;let offline=true;
+  w.fetch=async url=>{if(offline)throw Error('Network unavailable');if(url==='/api/me')return {ok:false,json:async()=>({error:'Sign in required'})};return {ok:true,json:async()=>({organization:{id:'org-1',name:'Team',accent_color:'#ef473d'},poll:null})}};
+  w.eval(source);await tick();await tick();
+  assert.ok(w.document.querySelector('#retry-vote'));
+  offline=false;w.document.querySelector('#retry-vote').click();await tick();await tick();
+  assert.ok(w.document.querySelector('#email-form'));
   w.close();
 });
 

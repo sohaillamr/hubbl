@@ -37,9 +37,18 @@ test('company plans, HR access, employee seats, screens, and photo cleanup', { s
     process.env.PLATFORM_ADMIN_EMAIL=`${slug}@example.com`;
     const overview=await call('GET','/platform/overview',null,cookie);
     assert.equal(overview.statusCode,200);
+    assert.equal((await call('GET','/platform/health')).statusCode,401);
+    const serviceHealth=await call('GET','/platform/health',null,cookie);
+    assert.equal(serviceHealth.statusCode,200);
+    assert.equal(serviceHealth.body.database,'connected');
     assert.equal(overview.body.organizations.find(o=>o.id===orgId).screens,1);
     assert.match(overview.body.organizations.find(o=>o.id===orgId).hr_link,new RegExp(`org=${slug}&view=admin`));
     assert.equal((await call('GET',`/org/${slug}/display?screen=${screen.token}`)).statusCode,200);
+    await db.query('update display_screens set last_seen_at=null where id=$1',[screen.id]);
+    assert.equal((await call('GET',`/org/${slug}/display?screen=${screen.token}&preview=1`)).statusCode,200);
+    assert.equal((await db.query('select last_seen_at from display_screens where id=$1',[screen.id])).rows[0].last_seen_at,null);
+    await call('GET',`/org/${slug}/display?screen=${screen.token}`);
+    assert.ok((await db.query('select last_seen_at from display_screens where id=$1',[screen.id])).rows[0].last_seen_at);
 
     const childSlug=`plan-${randomUUID().slice(0,8)}`;
     const company=await call('POST','/platform/organizations',{slug:childSlug,name:'Plan Test',email:'hr@example.com',admin_name:'HR Manager',seat_limit:2,screen_limit:2},cookie);
@@ -144,6 +153,18 @@ test('company plans, HR access, employee seats, screens, and photo cleanup', { s
     const ownProfile=await call('GET',`/org/${childSlug}/profiles/${employeeId}`,null,employeeCookie);
     assert.equal(ownProfile.body.history.length,2);
     assert.equal(ownProfile.body.history.find(v=>v.mode==='anonymous').choice,'Secret answer');
+    const settings={name:'Salma Hassan',department:'Design',job_title:'Product Designer',photo_data:profilePhoto,directory_visible:false,matching_enabled:false};
+    assert.equal((await call('PATCH',`/org/${childSlug}/profiles/me`,settings,employeeCookie)).statusCode,200);
+    assert.equal((await call('GET',`/org/${childSlug}/profiles/${employeeId}`,null,firstLogin.headers['Set-Cookie'])).statusCode,404);
+    assert.ok(!(await call('GET',`/org/${childSlug}/profiles?search=Salma`,null,hrCookie)).body.profiles.some(x=>x.id===employeeId));
+    assert.equal((await call('GET',`/org/${childSlug}/profiles/${employeeId}`,null,employeeCookie)).statusCode,200);
+    assert.equal((await call('PATCH',`/org/${childSlug}/profiles/me`,{...settings,directory_visible:true},employeeCookie)).statusCode,200);
+    assert.equal((await call('GET',`/org/${childSlug}/profiles/${employeeId}`,null,firstLogin.headers['Set-Cookie'])).body.match,null);
+    assert.equal((await call('POST',`/org/${childSlug}/ai/questions`,{kind:'fun',language:'en'},hrCookie)).statusCode,400);
+    const aggregate=await call('GET',`/org/${childSlug}/metrics`,null,hrCookie);
+    assert.equal(aggregate.statusCode,200);
+    assert.equal(aggregate.body.summary.invited,2);
+    assert.equal(aggregate.body.departments.length,0);
     assert.equal((await call('PATCH',`/org/${childSlug}/access/${salma.id}`,{is_active:false},hrCookie)).statusCode,200);
     assert.equal((await call('GET','/me',null,employeeCookie)).statusCode,401);
     assert.equal((await call('GET',`/org/${childSlug}/profiles/${employeeId}`,null,firstLogin.headers['Set-Cookie'])).statusCode,404);

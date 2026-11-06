@@ -6,7 +6,9 @@ Huddl runs a daily workplace question for each company. Employees vote from thei
 
 The multi-company app is at `/workspace?org=COMPANY-SLUG&view=vote`. Replace `vote` with `display` for an office screen or `admin` for HR. The Huddl owner uses `/workspace?view=platform` to create companies with a seat and live-screen allowance, adjust those limits, pause spaces, and see participation and screen links. New companies start with the selected number of named screen links.
 
-HR can upload a CSV or paste employee emails, up to the assigned seat allowance, and remove or restore individual access. Companies accept only emails on that list; existing employee accounts are carried into it during migration. On first use, an employee enters an HR-listed email, name, and department; job title is optional. No employee email is sent. Their browser receives a renewable 90-day session. Removing an email revokes its access. On a new device, a returning employee enters only their email and keeps the saved profile. Email-only entry does not prove address ownership, so this pilot access method should not be used for sensitive employee data.
+HR can upload a CSV or paste employee emails within the seat allowance and remove or restore access. An employee verifies their allowlisted email with a short-lived email code on a new device and creates a profile on first use. A renewable 90-day session avoids daily sign-in. Removing an email revokes access.
+
+Employees can hide their directory profile and disable vote matching. A hidden profile remains accessible to its owner. Profile visibility does not change past votes employees chose to share on an office screen.
 
 HR can also create questions with 2–8 choices, publish or close them, manage screen names and locations within the screen limit, see members and participation, and upload a logo. A logo upload suggests colors; the saved color themes the entire company portal. Buttons show progress and action toasts.
 
@@ -34,9 +36,11 @@ Copy `.env.example` to `.env.local` and fill in the values before migrating. `DA
 
 Set `GROQ_API_KEY` as a server-side environment variable for AI suggestions. Never expose it with a `VITE_` prefix. Policy text and company context are sent to Groq only when HR requests suggestions.
 
-For HR access emails and HR login-email changes, use a Resend sending key as `RESEND_API_KEY`. Without a domain, use `EMAIL_FROM=Huddl <onboarding@resend.dev>` and set `EMAIL_TEST_RECIPIENT` to the email address on the Resend account. Huddl then routes those HR messages to that one inbox for testing; each message names the intended user. Employee entry does not use Resend. Remove `EMAIL_TEST_RECIPIENT` and verify a sending domain before emailing real HR users.
+Set BREVO_API_KEY and BREVO_SENDER_EMAIL for employee verification, HR access emails and HR account changes. Resend variables are a fallback; employee verification is disabled when test delivery redirects mail. Configure the Supabase CA in SUPABASE_CA_CERT to verify the pooler's certificate and hostname. Store secrets only in Vercel or ignored local environment files.
 
-The Vercel Marketplace Resend integration currently requires a Vercel-purchased domain, so a direct Resend key is the domainless test path. Keep credentials only in local env files or Vercel project settings, never in Git.
+The HR dashboard includes a setup checklist, a device-timezone calendar, Egyptian question library, screen check-ins, and aggregate participation. Groups below five participants are omitted from department totals. HR must confirm the context that will be sent to Groq before generating questions.
+
+Operational checks and recovery instructions are in [OPERATIONS.md](OPERATIONS.md). Backups and external alerts require separate setup.
 
 ## Verification
 
