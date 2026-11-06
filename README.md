@@ -40,7 +40,7 @@ Set BREVO_API_KEY and BREVO_SENDER_EMAIL for employee verification, HR access em
 
 The HR dashboard includes a setup checklist, a device-timezone calendar, Egyptian question library, screen check-ins, and aggregate participation. Groups below five participants are omitted from department totals. HR must confirm the context that will be sent to Groq before generating questions.
 
-Operational checks and recovery instructions are in [OPERATIONS.md](OPERATIONS.md). Backups and external alerts require separate setup.
+Encrypted application backups, isolated restore checks, and availability alerts are configured through GitHub Actions. Setup details, security limits, and recovery steps are in [OPERATIONS.md](OPERATIONS.md).
 
 ## Verification
 
